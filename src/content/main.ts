@@ -208,6 +208,133 @@ async function apiDeletePost(storyId: string): Promise<{ success: boolean; messa
 }
 
 
+// ─── Pending Posts Tool ───
+interface PendingPost {
+  id: string
+  message: string
+  created_time: string
+  author_name: string
+  author_id: string
+}
+
+async function getPendingPosts(
+  groupId: string,
+  count: number = 20,
+  cursor: string | null = null
+): Promise<{ success: boolean; posts?: PendingPost[]; cursor?: string | null; hasNextPage?: boolean; message?: string }> {
+  const fb_dtsg = getFBDTSG()
+  const av = getUserID()
+
+  if (!fb_dtsg || !av) {
+    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+  }
+
+  try {
+    const res = await fetch('https://www.facebook.com/api/graphql/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        'av': av,
+        '__user': av,
+        '__a': '1',
+        'fb_dtsg': fb_dtsg,
+        'fb_api_caller_class': 'RelayModern',
+        'fb_api_req_friendly_name': 'GroupsCometPendingPostsFeedPaginationQuery',
+        'server_timestamps': 'true',
+        'variables': JSON.stringify({
+          count,
+          cursor: cursor ?? null,
+          feedLocation: 'GROUP_PENDING',
+          feedbackSource: 0,
+          focusCommentID: null,
+          hoistedPostID: null,
+          pendingStoriesOrderBy: null,
+          privacySelectorRenderLocation: 'COMET_STREAM',
+          referringStoryRenderLocation: null,
+          renderLocation: 'group_pending_queue',
+          scale: 1,
+          useDefaultActor: false,
+          id: groupId,
+          '__relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider': true,
+          '__relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider': true,
+          '__relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider': false,
+          '__relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider': false,
+          '__relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider': false,
+          '__relay_internal__pv__IsWorkUserrelayprovider': false,
+          '__relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider': false,
+          '__relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider': true,
+          '__relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider': true,
+          '__relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider': false,
+          '__relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider': false,
+          '__relay_internal__pv__IsMergQAPollsrelayprovider': false,
+          '__relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider': true,
+          '__relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider': false,
+          '__relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider': 'ORIGINAL',
+          '__relay_internal__pv__CometUFIShareActionMigrationrelayprovider': true,
+          '__relay_internal__pv__CometUFISingleLineUFIrelayprovider': true,
+          '__relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider': true,
+          '__relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider': true,
+          '__relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider': 206,
+          '__relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider': false,
+          '__relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider': true,
+        }),
+        'doc_id': '26459183580414880',
+      }),
+    })
+
+    const text = await res.text()
+
+    // Facebook trả về nhiều dòng JSON (ndjson), chỉ lấy dòng đầu
+    const firstLine = text.split('\n')[0]
+    const data = JSON.parse(firstLine)
+
+    // Log raw để debug nếu cần
+    console.log('[getPendingPosts] raw response:', text.slice(0, 800))
+
+    if (data?.errors) {
+      const errMsg = data.errors[0]?.message || 'GraphQL error'
+      console.error('[getPendingPosts] errors:', data.errors)
+      return { success: false, message: errMsg }
+    }
+
+    const section =
+      data?.data?.node?.pending_posts_section_stories   // path phổ biến
+      ?? data?.data?.node?.timeline_feed_units          // fallback 1
+      ?? data?.data?.viewer?.news_feed                  // fallback 2
+    const edges: any[] = section?.edges || []
+    const pageInfo = section?.page_info || {}
+
+    console.log('[getPendingPosts] data path node:', JSON.stringify(data?.data?.node)?.slice(0, 300))
+
+    const posts: PendingPost[] = edges.map((e: any) => {
+      const node = e.node || {}
+      const actor = node.actors?.[0] || {}
+      return {
+        id: node.id || '',
+        message: node.message?.text || '',
+        created_time: node.creation_time
+          ? new Date(node.creation_time * 1000).toISOString()
+          : '',
+        author_name: actor.name || '',
+        author_id: actor.id || '',
+      }
+    })
+
+    return {
+      success: true,
+      posts,
+      cursor: pageInfo.end_cursor ?? null,
+      hasNextPage: pageInfo.has_next_page ?? false,
+    }
+  } catch (err) {
+    console.error('getPendingPosts error:', err)
+    return { success: false, message: String(err) }
+  }
+}
+
 // ─── Post Cleaner Tool ───
 interface CleanerConfig {
   keywords: string
@@ -357,6 +484,82 @@ async function runPostCleaner(config: CleanerConfig, token: string, groupId: str
   sendDone(`Done! Deleted ${deletedCount} post(s), scanned ${scannedCount} post(s).`)
 }
 
+// ─── Pending Cleaner ───
+async function runPendingCleaner(config: CleanerConfig, groupId: string): Promise<void> {
+  cleanerAborted = false
+
+  const keywords = config.keywords
+    ? config.keywords.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean)
+    : []
+
+  sendLog(`[Pending] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(', ')}]` : 'no filter'}, max=${config.maxPosts}`)
+  sendLog(`[Pending] Group ID: ${groupId}`)
+
+  let deletedCount = 0
+  let scannedCount = 0
+  let cursor: string | null = null
+
+  while (deletedCount < config.maxPosts) {
+    if (cleanerAborted) {
+      sendDone(`Aborted. Deleted ${deletedCount} pending post(s).`)
+      return
+    }
+
+    sendLog(`Fetching pending posts…`)
+    const result = await getPendingPosts(groupId, 20, cursor)
+    if (!result.success) {
+      sendLog(`Failed to fetch: ${result.message}`, 'error')
+      sendDone('Failed.')
+      return
+    }
+
+    const posts = result.posts ?? []
+    if (posts.length === 0) {
+      sendLog('No more pending posts found.', 'warning')
+      break
+    }
+
+    for (const post of posts) {
+      if (cleanerAborted) break
+      if (deletedCount >= config.maxPosts) break
+
+      scannedCount++
+      const postText = post.message.toLowerCase()
+
+      if (!matchesKeywords(postText, keywords)) {
+        sendLog(`Post ${scannedCount}: no keyword match, skipping.`)
+        continue
+      }
+
+      const preview = postText.slice(0, 60).replace(/\n/g, ' ')
+      sendLog(`Post ${scannedCount}: “${preview}…” — deleting...`)
+
+      // story_id từ pending GraphQL đã ở dạng chuẩn
+      const deleteResult = await apiDeletePost(post.id)
+      if (!deleteResult.success) {
+        sendLog(`Failed to delete post ${scannedCount}: ${deleteResult.message}`, 'error')
+        continue
+      }
+
+      deletedCount++
+      sendLog(`✓ Pending post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`, 'success')
+      await delay(800 + Math.random() * 500)
+    }
+
+    if (!result.hasNextPage || !result.cursor) break
+    cursor = result.cursor
+  }
+
+  sendDone(`Done! Deleted ${deletedCount} pending post(s), scanned ${scannedCount} total.`)
+}
+
+// ─── Spam Cleaner (stub) ───
+async function runSpamCleaner(_config: CleanerConfig, _groupId: string): Promise<void> {
+  sendLog('🚧 Spam cleaner is not yet implemented. Coming soon!', 'warning')
+  await delay(1000)
+  sendDone('Spam cleaner: coming soon.')
+}
+
 // ─── Message Listener ───
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'PING') {
@@ -395,6 +598,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     runPostCleaner(message.config as CleanerConfig, message.token as string, message.groupId as string)
   }
 
+  if (message.type === 'START_PENDING_CLEANER') {
+    sendResponse({ ok: true })
+    runPendingCleaner(message.config as CleanerConfig, message.groupId as string)
+  }
+
+  if (message.type === 'START_SPAM_CLEANER') {
+    sendResponse({ ok: true })
+    runSpamCleaner(message.config as CleanerConfig, message.groupId as string)
+  }
+
   if (message.type === 'TEST_DELETE_POST') {
     const actorId = getUserID()
     if (!actorId) {
@@ -416,6 +629,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'LIKE_POST') {
     likePost(message.feedbackId).then(sendResponse)
+    return true // Keep channel open for async response
+  }
+
+  if (message.type === 'GET_PENDING_POSTS') {
+    getPendingPosts(
+      message.groupId as string,
+      (message.count as number) || 20,
+      (message.cursor as string | null) || null
+    ).then(sendResponse)
     return true // Keep channel open for async response
   }
 })

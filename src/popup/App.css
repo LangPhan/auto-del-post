@@ -168,7 +168,6 @@
 .actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
@@ -293,7 +292,7 @@
 /* ── Start / Stop Buttons ── */
 .start-btn,
 .stop-btn {
-  width: 100%;
+  flex: 1;
   padding: 9px 16px;
   border-radius: 8px;
   border: none;
@@ -322,6 +321,63 @@
 
 .stop-btn:hover {
   opacity: 0.9;
+}
+
+/* ── Pending Posts Button ── */
+.pending-btn {
+  display: none; /* replaced by mode selector */
+}
+
+/* ── Mode Selector ── */
+.mode-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.mode-btn {
+  padding: 8px 6px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.mode-btn:hover:not(:disabled) {
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.05);
+}
+
+.mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mode-active.mode-feed {
+  background: linear-gradient(135deg, var(--accent), #a78bfa);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(108, 99, 255, 0.4);
+}
+
+.mode-active.mode-pending {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
+}
+
+.mode-active.mode-spam {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
 /* ── Progress Log ── */

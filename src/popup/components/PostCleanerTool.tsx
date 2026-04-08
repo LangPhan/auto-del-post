@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const TOKEN_STORAGE_KEY = 'fb-graph-api-token'
 const GROUP_ID_STORAGE_KEY = 'fb-group-id'
 
+type Mode = 'feed' | 'pending' | 'spam'
+
 interface CleanerConfig {
   keywords: string
   maxPosts: number
@@ -16,7 +18,14 @@ interface LogEntry {
   type: 'info' | 'success' | 'error' | 'warning'
 }
 
+const MODE_META: Record<Mode, { label: string; emoji: string; desc: string }> = {
+  feed:    { emoji: '📰', label: 'Feed',    desc: 'Delete matching posts from your group feed' },
+  pending: { emoji: '⏳', label: 'Pending', desc: 'Delete matching posts from the pending queue' },
+  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Delete matching posts from the spam queue (coming soon)' },
+}
+
 export default function PostCleanerTool() {
+  const [mode, setMode] = useState<Mode>('feed')
   const [keywords, setKeywords] = useState('')
   const [maxPosts, setMaxPosts] = useState(5)
   const [fromDate, setFromDate] = useState('')
@@ -35,7 +44,7 @@ export default function PostCleanerTool() {
 
   // Listen for progress messages from content script
   useEffect(() => {
-    const listener = (message: { type: string; text?: string; logType?: string; done?: boolean }) => {
+    const listener = (message: { type: string; text?: string; logType?: string }) => {
       if (message.type === 'CLEANER_LOG') {
         addLog(message.text ?? '', (message.logType as LogEntry['type']) ?? 'info')
       }
@@ -51,22 +60,16 @@ export default function PostCleanerTool() {
   // Load token and groupId from storage on mount
   useEffect(() => {
     chrome.storage.local.get([TOKEN_STORAGE_KEY, GROUP_ID_STORAGE_KEY]).then((result) => {
-      if (result[TOKEN_STORAGE_KEY]) {
-        setToken(result[TOKEN_STORAGE_KEY] as string)
-      }
-      if (result[GROUP_ID_STORAGE_KEY]) {
-        setGroupId(result[GROUP_ID_STORAGE_KEY] as string)
-      }
+      if (result[TOKEN_STORAGE_KEY]) setToken(result[TOKEN_STORAGE_KEY] as string)
+      if (result[GROUP_ID_STORAGE_KEY]) setGroupId(result[GROUP_ID_STORAGE_KEY] as string)
     })
   }, [])
 
-  // Save token to storage when changed
   const handleTokenChange = (value: string) => {
     setToken(value)
     chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: value })
   }
 
-  // Save groupId to storage when changed
   const handleGroupIdChange = (value: string) => {
     setGroupId(value)
     chrome.storage.local.set({ [GROUP_ID_STORAGE_KEY]: value })
@@ -106,7 +109,7 @@ export default function PostCleanerTool() {
           chrome.storage.local.set({ [GROUP_ID_STORAGE_KEY]: response.groupId })
           addLog(`Detected groupId: ${response.groupId}`, 'success')
         } else {
-          addLog('Could not detect groupId from this page. Make sure you are on a Facebook group page.', 'warning')
+          addLog('Could not detect groupId from this page.', 'warning')
         }
       })
     } catch (err) {
@@ -122,10 +125,17 @@ export default function PostCleanerTool() {
     }
   }, [logs])
 
+  const handleModeChange = (newMode: Mode) => {
+    if (running) return
+    setMode(newMode)
+    setLogs([])
+    logIdRef.current = 0
+  }
+
   const handleStart = async () => {
     if (running) return
 
-    if (!token.trim()) {
+    if (mode === 'feed' && !token.trim()) {
       addLog('Error: Please enter your access token first.', 'error')
       return
     }
@@ -143,7 +153,7 @@ export default function PostCleanerTool() {
 
     setRunning(true)
     setLogs([])
-    addLog('Starting post cleaner...', 'info')
+    addLog(`Starting ${MODE_META[mode].label} cleaner...`, 'info')
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -167,8 +177,13 @@ export default function PostCleanerTool() {
         return
       }
 
+      const messageType =
+        mode === 'feed'    ? 'START_POST_CLEANER' :
+        mode === 'pending' ? 'START_PENDING_CLEANER' :
+                             'START_SPAM_CLEANER'
+
       chrome.tabs.sendMessage(tab.id, {
-        type: 'START_POST_CLEANER',
+        type: messageType,
         config,
         token: token.trim(),
         groupId: groupId.trim(),
@@ -201,21 +216,39 @@ export default function PostCleanerTool() {
 
   return (
     <div className="tool-panel">
-      {/* Token & Group ID Settings */}
-      <div className="control-card">
-        <div className="form-group">
-          <label htmlFor="accessToken">Access Token</label>
-          <input
-            id="accessToken"
-            type="password"
-            placeholder="Paste your Facebook Graph API token..."
-            value={token}
-            onChange={(e) => handleTokenChange(e.target.value)}
+      {/* Mode Selector */}
+      <div className="mode-selector">
+        {(Object.keys(MODE_META) as Mode[]).map((m) => (
+          <button
+            key={m}
+            className={`mode-btn ${mode === m ? 'mode-active' : ''} mode-${m}`}
+            onClick={() => handleModeChange(m)}
             disabled={running}
-            className="form-input"
-          />
-          <span className="form-hint">Your token is saved locally and persists across sessions.</span>
-        </div>
+            title={MODE_META[m].desc}
+          >
+            {MODE_META[m].emoji} {MODE_META[m].label}
+          </button>
+        ))}
+      </div>
+
+      {/* Settings Card */}
+      <div className="control-card">
+        {/* Token — only for feed mode */}
+        {mode === 'feed' && (
+          <div className="form-group">
+            <label htmlFor="accessToken">Access Token</label>
+            <input
+              id="accessToken"
+              type="password"
+              placeholder="Paste your Facebook Graph API token..."
+              value={token}
+              onChange={(e) => handleTokenChange(e.target.value)}
+              disabled={running}
+              className="form-input"
+            />
+            <span className="form-hint">Your token is saved locally and persists across sessions.</span>
+          </div>
+        )}
 
         <div className="form-group">
           <label htmlFor="groupId">Group ID</label>
@@ -242,7 +275,7 @@ export default function PostCleanerTool() {
         </div>
       </div>
 
-      {/* Cleaner Settings */}
+      {/* Filter Settings */}
       <div className="control-card">
         <div className="form-group">
           <label htmlFor="keywords">Keywords</label>
@@ -287,8 +320,11 @@ export default function PostCleanerTool() {
 
         <div className="actions">
           {!running ? (
-            <button className="start-btn" onClick={handleStart}>
-              ▶ Start Cleaning
+            <button
+              className={`start-btn ${mode === 'spam' ? 'start-btn-disabled' : ''}`}
+              onClick={handleStart}
+            >
+              ▶ Start {MODE_META[mode].label} Cleaner
             </button>
           ) : (
             <button className="stop-btn" onClick={handleStop}>
@@ -308,7 +344,7 @@ export default function PostCleanerTool() {
         </div>
         <div className="log-body" ref={logRef}>
           {logs.length === 0 ? (
-            <p className="log-empty">No activity yet. Configure filters and click Start.</p>
+            <p className="log-empty">No activity yet. Select a mode and click Start.</p>
           ) : (
             logs.map((entry) => (
               <div key={entry.id} className={`log-entry log-${entry.type}`}>

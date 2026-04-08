@@ -43,7 +43,7 @@ export default function App() {
       <footer className="popup-footer">
         {activeTab === 'font-size'
           ? 'Adjust the font size of your Facebook news feed'
-          : 'Delete matching posts from your Facebook group'}
+          : 'Select a mode, set filters, then click Start Cleaner'}
       </footer>
     </div>
   )
