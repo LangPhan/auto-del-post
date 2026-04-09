@@ -553,11 +553,276 @@ async function runPendingCleaner(config: CleanerConfig, groupId: string): Promis
   sendDone(`Done! Deleted ${deletedCount} pending post(s), scanned ${scannedCount} total.`)
 }
 
-// ─── Spam Cleaner (stub) ───
-async function runSpamCleaner(_config: CleanerConfig, _groupId: string): Promise<void> {
-  sendLog('🚧 Spam cleaner is not yet implemented. Coming soon!', 'warning')
-  await delay(1000)
-  sendDone('Spam cleaner: coming soon.')
+// ─── Spam Posts (Modmin Review Folder) ───
+interface SpamPost {
+  id: string          // story ID (base64 encoded)
+  post_id: string     // numeric post ID
+  contentType: string // e.g. GROUP_POST
+  message: string
+  created_time: string
+  author_name: string
+  author_id: string
+}
+
+async function getSpamPosts(
+  groupId: string,
+  count: number = 10,
+  cursor: string | null = null
+): Promise<{ success: boolean; posts?: SpamPost[]; cursor?: string | null; hasNextPage?: boolean; message?: string }> {
+  const fb_dtsg = getFBDTSG()
+  const av = getUserID()
+
+  if (!fb_dtsg || !av) {
+    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+  }
+
+  try {
+    const variables: Record<string, any> = {
+      contentType: null,
+      count,
+      cursor: cursor ?? null,
+      feedLocation: 'GROUPS_MODMIN_REVIEW_FOLDER',
+      feedbackSource: 0,
+      focusCommentID: null,
+      privacySelectorRenderLocation: 'COMET_STREAM',
+      referringStoryRenderLocation: null,
+      renderLocation: 'groups_modmin_review_folder',
+      scale: 1,
+      searchTerm: null,
+      useDefaultActor: false,
+      id: groupId,
+      '__relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider': true,
+      '__relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider': true,
+      '__relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider': false,
+      '__relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider': false,
+      '__relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider': false,
+      '__relay_internal__pv__IsWorkUserrelayprovider': false,
+      '__relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider': false,
+      '__relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider': true,
+      '__relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider': true,
+      '__relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider': false,
+      '__relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider': false,
+      '__relay_internal__pv__IsMergQAPollsrelayprovider': false,
+      '__relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider': true,
+      '__relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider': false,
+      '__relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider': 'ORIGINAL',
+      '__relay_internal__pv__CometUFIShareActionMigrationrelayprovider': true,
+      '__relay_internal__pv__CometUFISingleLineUFIrelayprovider': true,
+      '__relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider': true,
+      '__relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider': true,
+      '__relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider': 206,
+      '__relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider': false,
+      '__relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider': true,
+    }
+
+    const res = await fetch('https://www.facebook.com/api/graphql/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-fb-friendly-name': 'GroupsCometModminReviewFolderContentContainerQuery',
+      },
+      body: new URLSearchParams({
+        'av': av,
+        '__user': av,
+        '__a': '1',
+        'fb_dtsg': fb_dtsg,
+        'fb_api_caller_class': 'RelayModern',
+        'fb_api_req_friendly_name': 'GroupsCometModminReviewFolderContentContainerQuery',
+        'server_timestamps': 'true',
+        'variables': JSON.stringify(variables),
+        'doc_id': '34904810272499153',
+      }),
+    })
+
+    const text = await res.text()
+
+    // Facebook may return multiple JSON lines (ndjson)
+    const firstLine = text.split('\n')[0]
+    const data = JSON.parse(firstLine)
+
+    console.log('[getSpamPosts] raw response:', text.slice(0, 800))
+
+    if (data?.errors) {
+      const errMsg = data.errors[0]?.message || 'GraphQL error'
+      console.error('[getSpamPosts] errors:', data.errors)
+      return { success: false, message: errMsg }
+    }
+
+    const folder = data?.data?.node?.modmin_review_folder
+    const edges: any[] = folder?.edges || []
+    const pageInfo = folder?.page_info || {}
+
+    const posts: SpamPost[] = edges.map((e: any) => {
+      const node = e.node || {}
+      // Get message from the story content - try multiple paths
+      const storyContent = node.comet_sections?.content?.story
+      const messageText =
+        storyContent?.message?.text
+        ?? storyContent?.comet_sections?.message?.story?.message?.text
+        ?? node.message?.text
+        ?? ''
+
+      // Get author info from feedback.owning_profile or actors
+      const owningProfile = node.feedback?.owning_profile || {}
+      const actor = storyContent?.actors?.[0] || {}
+
+      return {
+        id: node.id || '',
+        post_id: node.post_id || storyContent?.post_id || '',
+        contentType: node.group_reportable_type || 'GROUP_POST',
+        message: messageText,
+        created_time: storyContent?.creation_time
+          ? new Date(storyContent.creation_time * 1000).toISOString()
+          : (node.creation_time ? new Date(node.creation_time * 1000).toISOString() : ''),
+        author_name: owningProfile.name || actor.name || '',
+        author_id: owningProfile.id || actor.id || '',
+      }
+    })
+
+    return {
+      success: true,
+      posts,
+      cursor: pageInfo.end_cursor ?? edges[edges.length - 1]?.cursor ?? null,
+      hasNextPage: pageInfo.has_next_page ?? (edges.length >= count),
+    }
+  } catch (err) {
+    console.error('getSpamPosts error:', err)
+    return { success: false, message: String(err) }
+  }
+}
+
+// ─── Decline Spam Post (Modmin Review Folder) ───
+async function apiDeclineSpamPost(
+  groupId: string,
+  storyId: string,
+  memberId: string,
+  contentType: string = 'GROUP_POST'
+): Promise<{ success: boolean; message: string }> {
+  const fb_dtsg = getFBDTSG()
+  const av = getUserID()
+
+  if (!fb_dtsg || !av) {
+    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+  }
+
+  console.log('Declining spam post:', { groupId, storyId, memberId, contentType })
+
+  try {
+    const res = await fetch('https://www.facebook.com/api/graphql/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-fb-friendly-name': 'GroupsCometModminReviewFolderDeclineContentMutation',
+      },
+      body: new URLSearchParams({
+        'av': av,
+        '__user': av,
+        '__a': '1',
+        'fb_dtsg': fb_dtsg,
+        'fb_api_caller_class': 'RelayModern',
+        'fb_api_req_friendly_name': 'GroupsCometModminReviewFolderDeclineContentMutation',
+        'server_timestamps': 'true',
+        'variables': JSON.stringify({
+          input: {
+            action_source: 'GROUP_MODMIN_REVIEW_FOLDER',
+            group_id: groupId,
+            story_id: storyId,
+            actor_id: av,
+            client_mutation_id: Math.floor(Math.random() * 1000).toString(),
+          },
+          contentType,
+          member_id: memberId,
+        }),
+        'doc_id': '30216535437945305',
+      }),
+    })
+
+    const text = await res.text()
+    console.log('Decline spam response:', text.slice(0, 500))
+
+    if (text.includes('"errors"')) {
+      const parsed = JSON.parse(text)
+      const errorMsg = parsed.errors?.[0]?.message || 'Unknown GraphQL error'
+      return { success: false, message: errorMsg }
+    }
+    return { success: true, message: 'Spam post declined successfully' }
+  } catch (err) {
+    console.error('Decline spam error:', err)
+    return { success: false, message: String(err) }
+  }
+}
+
+// ─── Spam Cleaner ───
+async function runSpamCleaner(config: CleanerConfig, groupId: string): Promise<void> {
+  cleanerAborted = false
+
+  const keywords = config.keywords
+    ? config.keywords.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean)
+    : []
+
+  sendLog(`[Spam] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(', ')}]` : 'no filter (delete all)'}, max=${config.maxPosts}`)
+  sendLog(`[Spam] Group ID: ${groupId}`)
+
+  let deletedCount = 0
+  let scannedCount = 0
+  let cursor: string | null = null
+
+  while (deletedCount < config.maxPosts) {
+    if (cleanerAborted) {
+      sendDone(`Aborted. Declined ${deletedCount} spam post(s).`)
+      return
+    }
+
+    sendLog(`Fetching spam posts…`)
+    const result = await getSpamPosts(groupId, 10, cursor)
+    if (!result.success) {
+      sendLog(`Failed to fetch spam posts: ${result.message}`, 'error')
+      sendDone('Failed.')
+      return
+    }
+
+    const posts = result.posts ?? []
+    if (posts.length === 0) {
+      sendLog('No more spam posts found.', 'warning')
+      break
+    }
+
+    sendLog(`Fetched ${posts.length} spam post(s).`)
+
+    for (const post of posts) {
+      if (cleanerAborted) break
+      if (deletedCount >= config.maxPosts) break
+
+      scannedCount++
+      const postText = (post.message || '').toLowerCase()
+
+      if (!matchesKeywords(postText, keywords)) {
+        const preview = postText.slice(0, 40).replace(/\n/g, ' ') || '(no text)'
+        sendLog(`Post ${scannedCount}: no keyword match, skipping. "${preview}…"`)
+        continue
+      }
+
+      const preview = postText.slice(0, 60).replace(/\n/g, ' ') || '(no text)'
+      sendLog(`Post ${scannedCount}: "${preview}…" by ${post.author_name || 'unknown'} — declining...`)
+
+      const declineResult = await apiDeclineSpamPost(groupId, post.id, post.author_id, post.contentType)
+      if (!declineResult.success) {
+        sendLog(`Failed to decline spam post ${scannedCount}: ${declineResult.message}`, 'error')
+        continue
+      }
+
+      deletedCount++
+      sendLog(`✓ Spam post ${scannedCount} declined! (${deletedCount}/${config.maxPosts})`, 'success')
+      await delay(800 + Math.random() * 500)
+    }
+
+    if (!result.hasNextPage || !result.cursor) break
+    cursor = result.cursor
+  }
+
+  sendDone(`Done! Declined ${deletedCount} spam post(s), scanned ${scannedCount} total.`)
 }
 
 // ─── Message Listener ───
@@ -636,6 +901,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     getPendingPosts(
       message.groupId as string,
       (message.count as number) || 20,
+      (message.cursor as string | null) || null
+    ).then(sendResponse)
+    return true // Keep channel open for async response
+  }
+
+  if (message.type === 'GET_SPAM_POSTS') {
+    getSpamPosts(
+      message.groupId as string,
+      (message.count as number) || 10,
       (message.cursor as string | null) || null
     ).then(sendResponse)
     return true // Keep channel open for async response

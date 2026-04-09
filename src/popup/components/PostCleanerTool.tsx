@@ -21,7 +21,7 @@ interface LogEntry {
 const MODE_META: Record<Mode, { label: string; emoji: string; desc: string }> = {
   feed:    { emoji: '📰', label: 'Feed',    desc: 'Delete matching posts from your group feed' },
   pending: { emoji: '⏳', label: 'Pending', desc: 'Delete matching posts from the pending queue' },
-  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Delete matching posts from the spam queue (coming soon)' },
+  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Delete matching posts from the spam / modmin review folder' },
 }
 
 export default function PostCleanerTool() {
@@ -321,7 +321,7 @@ export default function PostCleanerTool() {
         <div className="actions">
           {!running ? (
             <button
-              className={`start-btn ${mode === 'spam' ? 'start-btn-disabled' : ''}`}
+              className="start-btn"
               onClick={handleStart}
             >
               ▶ Start {MODE_META[mode].label} Cleaner
