@@ -3,7 +3,7 @@ import pkg from './package.json'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Facebook Font Size Tool',
+  name: 'Bộ công cụ Facebook',
   version: pkg.version,
   icons: {
     48: 'public/logo.png',

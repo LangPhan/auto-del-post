@@ -61,7 +61,7 @@ export default function FontSizeTool() {
         setTimeout(() => setStatus({ text: '', type: '' }), 3000)
       }
     } catch (err) {
-      setStatus({ text: `Connection error: ${err}`, type: 'error' })
+      setStatus({ text: `Lỗi kết nối: ${err}`, type: 'error' })
     } finally {
       setLiking(false)
     }
@@ -80,7 +80,7 @@ export default function FontSizeTool() {
         setTimeout(() => setStatus({ text: '', type: '' }), 3000)
       }
     } catch (err) {
-      setStatus({ text: `Connection error: ${err}`, type: 'error' })
+      setStatus({ text: `Lỗi kết nối: ${err}`, type: 'error' })
     } finally {
       setDeleting(false)
     }
@@ -102,7 +102,7 @@ export default function FontSizeTool() {
             onClick={handleLike} 
             disabled={liking || deleting}
           >
-            {liking ? '⌛ Liking...' : '👍 Like test post'}
+            {liking ? '⌛ Đang thích...' : '👍 Thử thích bài viết'}
           </button>
           <button 
             className="stop-btn" 
@@ -110,7 +110,7 @@ export default function FontSizeTool() {
             disabled={liking || deleting}
             style={{ width: '100%', padding: '9px 16px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
           >
-            {deleting ? '⌛ Deleting...' : '🗑️ Delete test post'}
+            {deleting ? '⌛ Đang xóa...' : '🗑️ Thử xóa bài viết'}
           </button>
           {status.text && (
             <div style={{ 
@@ -146,9 +146,9 @@ export default function FontSizeTool() {
             onClick={handleReset}
             disabled={fontSize === DEFAULT}
           >
-            ↺ Reset to 100%
+            ↺ Đặt lại về 100%
           </button>
-          {applied && <span className="applied-badge">✓ Applied</span>}
+          {applied && <span className="applied-badge">✓ Đã áp dụng</span>}
         </div>
       </div>
     </div>

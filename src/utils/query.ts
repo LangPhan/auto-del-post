@@ -23,38 +23,38 @@ export const ensureContentScript = async (tabId: number): Promise<boolean> => {
 export const likePost = async (feedbackId: string = "ZmVlZGJhY2s6MTg3NTIzMDYwOTkwNDQxNg=="): Promise<{ success: boolean; message: string }> => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
-    return { success: false, message: "No active tab found" };
+    return { success: false, message: "Không tìm thấy tab đang hoạt động" };
   }
 
   const ready = await ensureContentScript(tab.id);
   if (!ready) {
-    return { success: false, message: "Could not load content script. Try refreshing the page." };
+    return { success: false, message: "Không thể tải mã xử lý. Hãy thử tải lại trang." };
   }
 
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: 'LIKE_POST', feedbackId });
-    return response || { success: false, message: "No response from content script" };
+    return response || { success: false, message: "Không nhận được phản hồi từ trang" };
   } catch (error) {
-    return { success: false, message: `Failed to communicate with page: ${error}` };
+    return { success: false, message: `Lỗi khi kết nối với trang: ${error}` };
   }
 }
 
 export const deletePost = async (postId: string): Promise<{ success: boolean; message: string }> => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
-    return { success: false, message: "No active tab found" };
+    return { success: false, message: "Không tìm thấy tab đang hoạt động" };
   }
 
   const ready = await ensureContentScript(tab.id);
   if (!ready) {
-    return { success: false, message: "Could not load content script. Try refreshing the page." };
+    return { success: false, message: "Không thể tải mã xử lý. Hãy thử tải lại trang." };
   }
 
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: 'TEST_DELETE_POST', postId });
-    return response || { success: false, message: "No response from content script" };
+    return response || { success: false, message: "Không nhận được phản hồi từ trang" };
   } catch (error) {
-    return { success: false, message: `Failed to communicate with page: ${error}` };
+    return { success: false, message: `Lỗi khi kết nối với trang: ${error}` };
   }
 }
 

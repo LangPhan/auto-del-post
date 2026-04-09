@@ -118,7 +118,7 @@ async function likePost(
 
   if (!fb_dtsg) {
     const error =
-      "Could not find security token (fb_dtsg). If you are on a restricted page, try refreshing.";
+      "Không tìm thấy token bảo mật (fb_dtsg). Nếu bạn đang ở một trang bị hạn chế, hãy thử tải lại trang.";
     sendLog(error, "error");
     return {
       success: false,
@@ -128,7 +128,7 @@ async function likePost(
 
   if (!av) {
     const error =
-      "Could not find User ID. Make sure you are logged into Facebook.";
+      "Không tìm thấy ID người dùng. Hãy chắc chắn bạn đã đăng nhập Facebook.";
     sendLog(error, "error");
     return {
       success: false,
@@ -185,7 +185,7 @@ async function likePost(
         JSON.parse(text).errors[0]
           .message;
       sendLog(
-        `Failed to like post: ${errorMsg}`,
+        `Không thể thích bài viết: ${errorMsg}`,
         "error",
       );
       return {
@@ -194,7 +194,7 @@ async function likePost(
       };
     } else {
       const successMsg =
-        "Successfully liked post!";
+        "Đã thích bài viết thành công!";
       sendLog(successMsg, "success");
       return {
         success: true,
@@ -202,7 +202,7 @@ async function likePost(
       };
     }
   } catch (err) {
-    const errorMsg = `Error liking post: ${err}`;
+    const errorMsg = `Lỗi khi thích bài viết: ${err}`;
     sendLog(errorMsg, "error");
     return {
       success: false,
@@ -224,7 +224,7 @@ async function apiDeletePost(
     return {
       success: false,
       message:
-        "Tokens missing (fb_dtsg or av)",
+        "Thiếu token (fb_dtsg hoặc av)",
     };
   }
 
@@ -285,7 +285,7 @@ async function apiDeletePost(
       const parsed = JSON.parse(text);
       const errorMsg =
         parsed.errors?.[0]?.message ||
-        "Unknown GraphQL error";
+        "Lỗi GraphQL không xác định";
       const debugInfo =
         parsed.errors?.[0]
           ?.debug_info || "";
@@ -298,7 +298,7 @@ async function apiDeletePost(
     return {
       success: true,
       message:
-        "Post deleted successfully",
+        "Xóa bài viết thành công",
     };
   } catch (err) {
     console.error(
@@ -339,7 +339,7 @@ async function getPendingPosts(
     return {
       success: false,
       message:
-        "Tokens missing (fb_dtsg or av)",
+        "Thiếu token (fb_dtsg hoặc av)",
     };
   }
 
@@ -426,7 +426,7 @@ async function getPendingPosts(
     if (data?.errors) {
       const errMsg =
         data.errors[0]?.message ||
-        "GraphQL error";
+        "Lỗi GraphQL";
       console.error(
         "[getPendingPosts] errors:",
         data.errors,
@@ -467,9 +467,9 @@ async function getPendingPosts(
           created_time:
             node.creation_time
               ? new Date(
-                  node.creation_time *
-                    1000,
-                ).toISOString()
+                node.creation_time *
+                1000,
+              ).toISOString()
               : "",
           author_name: actor.name || "",
           author_id: actor.id || "",
@@ -613,7 +613,7 @@ async function getFeedPostsGraphQL(
     return {
       success: false,
       message:
-        "Tokens missing (fb_dtsg or av)",
+        "Thiếu token (fb_dtsg hoặc av)",
     };
   }
 
@@ -720,7 +720,7 @@ async function getFeedPostsGraphQL(
         ) {
           const errMsg =
             json.errors[0]?.message ||
-            "GraphQL error";
+            "Lỗi GraphQL";
           console.error(
             "[getFeedPostsGraphQL] errors:",
             json.errors,
@@ -837,8 +837,8 @@ async function getFeedPostsGraphQL(
           message: messageText,
           created_time: creationTime
             ? new Date(
-                creationTime * 1000,
-              ).toISOString()
+              creationTime * 1000,
+            ).toISOString()
             : "",
           author_name: actor.name || "",
           author_id: actor.id || "",
@@ -874,11 +874,11 @@ async function runPostCleaner(
 
   const keywords = config.keywords
     ? config.keywords
-        .split(",")
-        .map((k) =>
-          k.trim().toLowerCase(),
-        )
-        .filter(Boolean)
+      .split(",")
+      .map((k) =>
+        k.trim().toLowerCase(),
+      )
+      .filter(Boolean)
     : [];
   const fromDate = config.fromDate
     ? new Date(config.fromDate)
@@ -886,13 +886,13 @@ async function runPostCleaner(
   const useGraphQL = !token.trim();
 
   sendLog(
-    `Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no keyword filter"}, max=${config.maxPosts}${fromDate ? `, from=${config.fromDate}` : ""}`,
+    `Bộ lọc: ${keywords.length > 0 ? `từ khóa=[${keywords.join(", ")}]` : "không lọc từ khóa"}, tối đa=${config.maxPosts}${fromDate ? `, từ ngày=${config.fromDate}` : ""}`,
   );
-  sendLog(`Group ID: ${groupId}`);
+  sendLog(`ID Nhóm: ${groupId}`);
   sendLog(
     useGraphQL
-      ? "🔑 No token — using cookie-based GraphQL API"
-      : "🔑 Using access token Graph API",
+      ? "🔑 Không có token — sử dụng GraphQL API qua cookie"
+      : "🔑 Sử dụng Graph API qua Access Token",
   );
 
   let deletedCount = 0;
@@ -917,7 +917,7 @@ async function runPostCleaner(
 
       fetchAttempts++;
       sendLog(
-        `Fetching feed via GraphQL (page ${fetchAttempts})...`,
+        `Đang lấy bảng tin qua GraphQL (trang ${fetchAttempts})...`,
       );
 
       const result =
@@ -928,17 +928,17 @@ async function runPostCleaner(
         );
       if (!result.success) {
         sendLog(
-          `Failed to fetch feed: ${result.message}`,
+          `Lỗi lấy dữ liệu bảng tin: ${result.message}`,
           "error",
         );
-        sendDone("Failed.");
+        sendDone("Thất bại.");
         return;
       }
 
       const posts = result.posts ?? [];
       if (posts.length === 0) {
         sendLog(
-          "No more feed posts found.",
+          "Không tìm thấy thêm bài viết nào.",
           "warning",
         );
         break;
@@ -953,14 +953,14 @@ async function runPostCleaner(
       );
       if (newPosts.length === 0) {
         sendLog(
-          "All returned posts already processed.",
+          "Tất cả bài viết trả về đều đã được xử lý.",
           "warning",
         );
         break;
       }
 
       sendLog(
-        `Fetched ${posts.length} feed post(s).`,
+        `Đã lấy được ${posts.length} bài viết.`,
       );
 
       for (const post of posts) {
@@ -1005,7 +1005,7 @@ async function runPostCleaner(
           );
           if (postDate < fromDate) {
             sendLog(
-              `Post ${scannedCount}: older than fromDate, skipping.`,
+              `Bài viết ${scannedCount}: cũ hơn ngày bắt đầu, bỏ qua.`,
             );
             continue;
           }
@@ -1015,9 +1015,9 @@ async function runPostCleaner(
           postText
             .slice(0, 60)
             .replace(/\n/g, " ") ||
-          "(no text)";
+          "(không có nội dung)";
         sendLog(
-          `Post ${scannedCount}: "${preview}…" by ${post.author_name || "unknown"} — deleting...`,
+          `Bài viết ${scannedCount}: "${preview}…" bởi ${post.author_name || "không rõ"} — đang xóa...`,
         );
 
         // The id from GraphQL is already the story ID
@@ -1033,7 +1033,7 @@ async function runPostCleaner(
 
         deletedCount++;
         sendLog(
-          `✓ Post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+          `✓ Bài viết ${scannedCount} đã được xóa! (${deletedCount}/${config.maxPosts})`,
           "success",
         );
         await delay(
@@ -1041,12 +1041,12 @@ async function runPostCleaner(
         );
       }
 
-      if (
-        !result.hasNextPage ||
-        !result.cursor
-      )
-        break;
-      cursor = result.cursor;
+      // if (
+      //   !result.hasNextPage ||
+      //   !result.cursor
+      // )
+      //   break;
+      // cursor = result.cursor;
     }
   } else {
     // ── Token-based Graph API approach (original) ──
@@ -1066,7 +1066,7 @@ async function runPostCleaner(
 
       fetchAttempts++;
       sendLog(
-        `Fetching feed from Graph API (page ${fetchAttempts})...`,
+        `Đang lấy bảng tin từ Graph API (trang ${fetchAttempts})...`,
       );
 
       let articles: any[] = [];
@@ -1094,7 +1094,7 @@ async function runPostCleaner(
 
         if (articles.length === 0) {
           sendLog(
-            "No more articles found from API response.",
+            "Không tìm thấy bài viết nào từ API.",
             "warning",
           );
           break;
@@ -1107,18 +1107,18 @@ async function runPostCleaner(
           );
         if (newPosts.length === 0) {
           sendLog(
-            "All returned posts have already been processed. No new posts to scan.",
+            "Tất cả bài viết trả về đều đã được xử lý. Không có bài mới để quét.",
             "warning",
           );
           break;
         }
       } catch (err) {
         sendLog(
-          `API fetch failed: ${err}`,
+          `Lỗi khi lấy dữ liệu API: ${err}`,
           "error",
         );
         sendDone(
-          "Failed: Graph API error.",
+          "Thất bại: Lỗi Graph API.",
         );
         return;
       }
@@ -1162,19 +1162,19 @@ async function runPostCleaner(
           );
           if (postDate < fromDate) {
             sendLog(
-              `Post ${scannedCount}: older than fromDate, skipping.`,
+              `Bài viết ${scannedCount}: cũ hơn ngày bắt đầu, bỏ qua.`,
             );
             continue;
           }
           sendLog(
-            `Post ${scannedCount}: matched keywords, attempting deletion...`,
+            `Bài viết ${scannedCount}: khớp từ khóa, đang xóa...`,
           );
         } else {
           const preview = postText
             .slice(0, 60)
             .replace(/\n/g, " ");
           sendLog(
-            `Post ${scannedCount}: matched "${preview}..."`,
+            `Bài viết ${scannedCount}: khớp "${preview}..."`,
           );
         }
 
@@ -1189,20 +1189,20 @@ async function runPostCleaner(
         const storyId =
           actorId && postId
             ? btoa(
-                `S:_I${actorId}:VK:${postId}`,
-              )
+              `S:_I${actorId}:VK:${postId}`,
+            )
             : null;
 
         if (!storyId) {
           sendLog(
-            `Could not determine story ID for post ${scannedCount}, skipping.`,
+            `Không thể xác định story ID cho bài viết ${scannedCount}, bỏ qua.`,
             "warning",
           );
           continue;
         }
 
         sendLog(
-          `Deleting post ${scannedCount} via API...`,
+          `Đang xóa bài viết ${scannedCount} qua API...`,
         );
         const deleteResult =
           await apiDeletePost(storyId);
@@ -1217,7 +1217,7 @@ async function runPostCleaner(
 
         deletedCount++;
         sendLog(
-          `✓ Post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+          `✓ Bài viết ${scannedCount} đã được xóa! (${deletedCount}/${config.maxPosts})`,
           "success",
         );
         await delay(
@@ -1228,7 +1228,7 @@ async function runPostCleaner(
   }
 
   sendDone(
-    `Done! Deleted ${deletedCount} post(s), scanned ${scannedCount} post(s).`,
+    `Hoàn tất! Đã xóa ${deletedCount} bài viết, quét ${scannedCount} bài viết.`,
   );
 }
 
@@ -1241,18 +1241,18 @@ async function runPendingCleaner(
 
   const keywords = config.keywords
     ? config.keywords
-        .split(",")
-        .map((k) =>
-          k.trim().toLowerCase(),
-        )
-        .filter(Boolean)
+      .split(",")
+      .map((k) =>
+        k.trim().toLowerCase(),
+      )
+      .filter(Boolean)
     : [];
 
   sendLog(
-    `[Pending] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no filter"}, max=${config.maxPosts}`,
+    `[Đang chờ] Bộ lọc: ${keywords.length > 0 ? `từ khóa=[${keywords.join(", ")}]` : "không lọc"}, tối đa=${config.maxPosts}`,
   );
   sendLog(
-    `[Pending] Group ID: ${groupId}`,
+    `[Đang chờ] ID Nhóm: ${groupId}`,
   );
 
   let deletedCount = 0;
@@ -1264,12 +1264,12 @@ async function runPendingCleaner(
   ) {
     if (cleanerAborted) {
       sendDone(
-        `Aborted. Deleted ${deletedCount} pending post(s).`,
+        `Đã dừng. Đã xóa ${deletedCount} bài viết đang chờ.`,
       );
       return;
     }
 
-    sendLog(`Fetching pending posts…`);
+    sendLog(`Đang lấy bài viết đang chờ…`);
     const result =
       await getPendingPosts(
         groupId,
@@ -1278,17 +1278,17 @@ async function runPendingCleaner(
       );
     if (!result.success) {
       sendLog(
-        `Failed to fetch: ${result.message}`,
+        `Lỗi khi lấy dữ liệu: ${result.message}`,
         "error",
       );
-      sendDone("Failed.");
+      sendDone("Thất bại.");
       return;
     }
 
     const posts = result.posts ?? [];
     if (posts.length === 0) {
       sendLog(
-        "No more pending posts found.",
+        "Không tìm thấy thêm bài viết đang chờ duyệt nào.",
         "warning",
       );
       break;
@@ -1312,7 +1312,7 @@ async function runPendingCleaner(
         )
       ) {
         sendLog(
-          `Post ${scannedCount}: no keyword match, skipping.`,
+          `Bài viết ${scannedCount}: không khớp từ khóa, bỏ qua.`,
         );
         continue;
       }
@@ -1321,7 +1321,7 @@ async function runPendingCleaner(
         .slice(0, 60)
         .replace(/\n/g, " ");
       sendLog(
-        `Post ${scannedCount}: “${preview}…” — deleting...`,
+        `Bài viết ${scannedCount}: “${preview}…” — đang xóa...`,
       );
 
       // story_id từ pending GraphQL đã ở dạng chuẩn
@@ -1329,7 +1329,7 @@ async function runPendingCleaner(
         await apiDeletePost(post.id);
       if (!deleteResult.success) {
         sendLog(
-          `Failed to delete post ${scannedCount}: ${deleteResult.message}`,
+          `Lỗi khi xóa bài viết ${scannedCount}: ${deleteResult.message}`,
           "error",
         );
         continue;
@@ -1337,7 +1337,7 @@ async function runPendingCleaner(
 
       deletedCount++;
       sendLog(
-        `✓ Pending post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+        `✓ Đã xóa bài viết đang chờ ${scannedCount}! (${deletedCount}/${config.maxPosts})`,
         "success",
       );
       await delay(
@@ -1354,7 +1354,7 @@ async function runPendingCleaner(
   }
 
   sendDone(
-    `Done! Deleted ${deletedCount} pending post(s), scanned ${scannedCount} total.`,
+    `Hoàn tất! Đã xóa ${deletedCount} bài viết đang chờ, quét tổng cộng ${scannedCount} bài.`,
   );
 }
 
@@ -1387,7 +1387,7 @@ async function getSpamPosts(
     return {
       success: false,
       message:
-        "Tokens missing (fb_dtsg or av)",
+        "Thiếu token (fb_dtsg hoặc av)",
     };
   }
 
@@ -1481,7 +1481,7 @@ async function getSpamPosts(
     if (data?.errors) {
       const errMsg =
         data.errors[0]?.message ||
-        "GraphQL error";
+        "Lỗi GraphQL";
       console.error(
         "[getSpamPosts] errors:",
         data.errors,
@@ -1536,14 +1536,14 @@ async function getSpamPosts(
           created_time:
             storyContent?.creation_time
               ? new Date(
-                  storyContent.creation_time *
-                    1000,
-                ).toISOString()
+                storyContent.creation_time *
+                1000,
+              ).toISOString()
               : node.creation_time
                 ? new Date(
-                    node.creation_time *
-                      1000,
-                  ).toISOString()
+                  node.creation_time *
+                  1000,
+                ).toISOString()
                 : "",
           author_name:
             owningProfile.name ||
@@ -1598,7 +1598,7 @@ async function apiDeclineSpamPost(
     return {
       success: false,
       message:
-        "Tokens missing (fb_dtsg or av)",
+        "Thiếu token (fb_dtsg hoặc av)",
     };
   }
 
@@ -1661,7 +1661,7 @@ async function apiDeclineSpamPost(
       const parsed = JSON.parse(text);
       const errorMsg =
         parsed.errors?.[0]?.message ||
-        "Unknown GraphQL error";
+        "Lỗi GraphQL không xác định";
       return {
         success: false,
         message: errorMsg,
@@ -1670,7 +1670,7 @@ async function apiDeclineSpamPost(
     return {
       success: true,
       message:
-        "Spam post declined successfully",
+        "Đã từ chối bài viết spam thành công",
     };
   } catch (err) {
     console.error(
@@ -1693,18 +1693,18 @@ async function runSpamCleaner(
 
   const keywords = config.keywords
     ? config.keywords
-        .split(",")
-        .map((k) =>
-          k.trim().toLowerCase(),
-        )
-        .filter(Boolean)
+      .split(",")
+      .map((k) =>
+        k.trim().toLowerCase(),
+      )
+      .filter(Boolean)
     : [];
 
   sendLog(
-    `[Spam] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no filter (delete all)"}, max=${config.maxPosts}`,
+    `[Spam] Bộ lọc: ${keywords.length > 0 ? `từ khóa=[${keywords.join(", ")}]` : "không lọc (xóa tất cả)"}, tối đa=${config.maxPosts}`,
   );
   sendLog(
-    `[Spam] Group ID: ${groupId}`,
+    `[Spam] ID Nhóm: ${groupId}`,
   );
 
   let deletedCount = 0;
@@ -1716,12 +1716,12 @@ async function runSpamCleaner(
   ) {
     if (cleanerAborted) {
       sendDone(
-        `Aborted. Declined ${deletedCount} spam post(s).`,
+        `Đã dừng. Đã từ chối ${deletedCount} bài viết spam.`,
       );
       return;
     }
 
-    sendLog(`Fetching spam posts…`);
+    sendLog(`Đang lấy bài viết spam…`);
     const result = await getSpamPosts(
       groupId,
       10,
@@ -1729,24 +1729,24 @@ async function runSpamCleaner(
     );
     if (!result.success) {
       sendLog(
-        `Failed to fetch spam posts: ${result.message}`,
+        `Lỗi khi lấy bài viết spam: ${result.message}`,
         "error",
       );
-      sendDone("Failed.");
+      sendDone("Thất bại.");
       return;
     }
 
     const posts = result.posts ?? [];
     if (posts.length === 0) {
       sendLog(
-        "No more spam posts found.",
+        "Không tìm thấy thêm bài viết spam nào.",
         "warning",
       );
       break;
     }
 
     sendLog(
-      `Fetched ${posts.length} spam post(s).`,
+      `Đã lấy được ${posts.length} bài viết spam.`,
     );
 
     for (const post of posts) {
@@ -1771,9 +1771,9 @@ async function runSpamCleaner(
           postText
             .slice(0, 40)
             .replace(/\n/g, " ") ||
-          "(no text)";
+          "(không có nội dung)";
         sendLog(
-          `Post ${scannedCount}: no keyword match, skipping. "${preview}…"`,
+          `Bài viết ${scannedCount}: không khớp từ khóa, bỏ qua. "${preview}…"`,
         );
         continue;
       }
@@ -1782,9 +1782,9 @@ async function runSpamCleaner(
         postText
           .slice(0, 60)
           .replace(/\n/g, " ") ||
-        "(no text)";
+        "(không có nội dung)";
       sendLog(
-        `Post ${scannedCount}: "${preview}…" by ${post.author_name || "unknown"} — declining...`,
+        `Bài viết ${scannedCount}: "${preview}…" bởi ${post.author_name || "không rõ"} — đang từ chối...`,
       );
 
       const declineResult =
@@ -1796,7 +1796,7 @@ async function runSpamCleaner(
         );
       if (!declineResult.success) {
         sendLog(
-          `Failed to decline spam post ${scannedCount}: ${declineResult.message}`,
+          `Lỗi từ chối bài viết spam ${scannedCount}: ${declineResult.message}`,
           "error",
         );
         continue;
@@ -1804,7 +1804,7 @@ async function runSpamCleaner(
 
       deletedCount++;
       sendLog(
-        `✓ Spam post ${scannedCount} declined! (${deletedCount}/${config.maxPosts})`,
+        `✓ Đã từ chối bài viết spam ${scannedCount}! (${deletedCount}/${config.maxPosts})`,
         "success",
       );
       await delay(
@@ -1821,7 +1821,7 @@ async function runSpamCleaner(
   }
 
   sendDone(
-    `Done! Declined ${deletedCount} spam post(s), scanned ${scannedCount} total.`,
+    `Hoàn tất! Đã từ chối ${deletedCount} bài viết spam, quét tổng cộng ${scannedCount} bài.`,
   );
 }
 
@@ -1912,7 +1912,7 @@ chrome.runtime.onMessage.addListener(
         sendResponse({
           success: false,
           message:
-            "Could not find User ID",
+            "Không tìm thấy ID người dùng",
         });
         return;
       }

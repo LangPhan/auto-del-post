@@ -13,8 +13,8 @@ export default function App() {
       <header className="popup-header">
         <div className="header-icon">🔧</div>
         <div>
-          <h1>Facebook Tools</h1>
-          <p className="subtitle">Extension Toolkit</p>
+          <h1>Công cụ Facebook</h1>
+          <p className="subtitle">Bộ công cụ tiện ích</p>
         </div>
       </header>
 
@@ -23,13 +23,13 @@ export default function App() {
           className={`tab ${activeTab === 'font-size' ? 'tab-active' : ''}`}
           onClick={() => setActiveTab('font-size')}
         >
-          Aa Font Size
+          Aa Cỡ chữ
         </button>
         <button
           className={`tab ${activeTab === 'post-cleaner' ? 'tab-active' : ''}`}
           onClick={() => setActiveTab('post-cleaner')}
         >
-          🧹 Post Cleaner
+          🧹 Dọn dẹp bài viết
         </button>
       </nav>
 
@@ -42,8 +42,8 @@ export default function App() {
 
       <footer className="popup-footer">
         {activeTab === 'font-size'
-          ? 'Adjust the font size of your Facebook news feed'
-          : 'Select a mode, set filters, then click Start Cleaner'}
+          ? 'Điều chỉnh kích cỡ chữ trên bảng tin Facebook của bạn'
+          : 'Chọn chế độ, thiết lập bộ lọc, sau đó nhấn Bắt đầu dọn dẹp'}
       </footer>
     </div>
   )

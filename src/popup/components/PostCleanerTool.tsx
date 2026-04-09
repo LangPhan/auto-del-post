@@ -19,9 +19,9 @@ interface LogEntry {
 }
 
 const MODE_META: Record<Mode, { label: string; emoji: string; desc: string }> = {
-  feed:    { emoji: '📰', label: 'Feed',    desc: 'Delete matching posts from your group feed' },
-  pending: { emoji: '⏳', label: 'Pending', desc: 'Delete matching posts from the pending queue' },
-  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Delete matching posts from the spam / modmin review folder' },
+  feed:    { emoji: '📰', label: 'Bảng tin',    desc: 'Xóa các bài viết khớp từ bảng tin của nhóm' },
+  pending: { emoji: '⏳', label: 'Đang chờ', desc: 'Xóa các bài viết khớp từ hàng đợi đang chờ duyệt' },
+  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Xóa các bài viết khớp từ thư mục spam / kiểm duyệt viên' },
 }
 
 export default function PostCleanerTool() {
@@ -50,7 +50,7 @@ export default function PostCleanerTool() {
       }
       if (message.type === 'CLEANER_DONE') {
         setRunning(false)
-        addLog(message.text ?? 'Process completed.', 'success')
+        addLog(message.text ?? 'Tiến trình đã hoàn tất.', 'success')
       }
     }
     chrome.runtime.onMessage.addListener(listener)
@@ -81,19 +81,19 @@ export default function PostCleanerTool() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id) {
-        addLog('Error: No active tab found.', 'error')
+        addLog('Lỗi: Không tìm thấy tab đang hoạt động.', 'error')
         setGroupIdLoading(false)
         return
       }
       if (!tab.url?.includes('facebook.com')) {
-        addLog('Error: Please navigate to a Facebook page first.', 'error')
+        addLog('Lỗi: Vui lòng điều hướng đến trang Facebook trước.', 'error')
         setGroupIdLoading(false)
         return
       }
 
       const ready = await ensureContentScript(tab.id)
       if (!ready) {
-        addLog('Error: Could not load content script.', 'error')
+        addLog('Lỗi: Không thể tải mã xử lý (content script).', 'error')
         setGroupIdLoading(false)
         return
       }
@@ -101,19 +101,19 @@ export default function PostCleanerTool() {
       chrome.tabs.sendMessage(tab.id, { type: 'GET_GROUP_ID' }, (response) => {
         setGroupIdLoading(false)
         if (chrome.runtime.lastError) {
-          addLog('Error detecting groupId: ' + chrome.runtime.lastError.message, 'error')
+          addLog('Lỗi khi phát hiện ID Nhóm: ' + chrome.runtime.lastError.message, 'error')
           return
         }
         if (response?.groupId) {
           setGroupId(response.groupId)
           chrome.storage.local.set({ [GROUP_ID_STORAGE_KEY]: response.groupId })
-          addLog(`Detected groupId: ${response.groupId}`, 'success')
+          addLog(`Đã phát hiện ID Nhóm: ${response.groupId}`, 'success')
         } else {
-          addLog('Could not detect groupId from this page.', 'warning')
+          addLog('Không thể phát hiện ID Nhóm từ trang này.', 'warning')
         }
       })
     } catch (err) {
-      addLog(`Error detecting groupId: ${err}`, 'error')
+      addLog(`Lỗi khi phát hiện ID Nhóm: ${err}`, 'error')
       setGroupIdLoading(false)
     }
   }, [])
@@ -137,7 +137,7 @@ export default function PostCleanerTool() {
 
 
     if (!groupId.trim()) {
-      addLog('Error: Please enter or detect Group ID first.', 'error')
+      addLog('Lỗi: Vui lòng nhập hoặc tự động phát hiện ID Nhóm trước.', 'error')
       return
     }
 
@@ -149,26 +149,25 @@ export default function PostCleanerTool() {
 
     setRunning(true)
     setLogs([])
-    addLog(`Starting ${MODE_META[mode].label} cleaner...`, 'info')
+    addLog(`Đang bắt đầu dọn dẹp ${MODE_META[mode].label}...`, 'info')
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
 
       if (!tab?.id) {
-        addLog('Error: No active tab found.', 'error')
+        addLog('Lỗi: Không tìm thấy tab đang hoạt động.', 'error')
         setRunning(false)
         return
       }
-
       if (!tab.url?.includes('facebook.com')) {
-        addLog('Error: Please navigate to a Facebook group page first.', 'error')
+        addLog('Lỗi: Vui lòng điều hướng đến trang nhóm Facebook trước.', 'error')
         setRunning(false)
         return
       }
 
       const ready = await ensureContentScript(tab.id)
       if (!ready) {
-        addLog('Error: Could not load content script. Try refreshing the Facebook page.', 'error')
+        addLog('Lỗi: Không thể tải mã xử lý. Hãy thử tải lại trang Facebook.', 'error')
         setRunning(false)
         return
       }
@@ -185,12 +184,12 @@ export default function PostCleanerTool() {
         groupId: groupId.trim(),
       }, () => {
         if (chrome.runtime.lastError) {
-          addLog('Error: ' + chrome.runtime.lastError.message, 'error')
+          addLog('Lỗi: ' + chrome.runtime.lastError.message, 'error')
           setRunning(false)
         }
       })
     } catch (err) {
-      addLog(`Error: ${err}`, 'error')
+      addLog(`Lỗi: ${err}`, 'error')
       setRunning(false)
     }
   }
@@ -202,7 +201,7 @@ export default function PostCleanerTool() {
       }
     })
     setRunning(false)
-    addLog('Stopped by user.', 'warning')
+    addLog('Đã dừng bởi người dùng.', 'warning')
   }
 
   const handleClearLogs = () => {
@@ -232,27 +231,27 @@ export default function PostCleanerTool() {
         {/* Token — only for feed mode */}
         {mode === 'feed' && (
           <div className="form-group">
-            <label htmlFor="accessToken">Access Token</label>
+            <label htmlFor="accessToken">Mã truy cập (Access Token)</label>
             <input
               id="accessToken"
               type="password"
-              placeholder="Paste your Facebook Graph API token..."
+              placeholder="Dán mã token Facebook Graph API của bạn..."
               value={token}
               onChange={(e) => handleTokenChange(e.target.value)}
               disabled={running}
               className="form-input"
             />
-            <span className="form-hint">Optional. If empty, uses cookie-based GraphQL (no token needed).</span>
+            <span className="form-hint">Không bắt buộc. Nếu để trống, sẽ sử dụng GraphQL dựa trên cookie (không cần token).</span>
           </div>
         )}
 
         <div className="form-group">
-          <label htmlFor="groupId">Group ID</label>
+          <label htmlFor="groupId">ID Nhóm</label>
           <div className="input-with-btn">
             <input
               id="groupId"
               type="text"
-              placeholder="e.g. 1441796987660953"
+              placeholder="ví dụ: 1441796987660953"
               value={groupId}
               onChange={(e) => handleGroupIdChange(e.target.value)}
               disabled={running}
@@ -262,34 +261,34 @@ export default function PostCleanerTool() {
               className="detect-btn"
               onClick={detectGroupId}
               disabled={running || groupIdLoading}
-              title="Auto-detect from current page"
+              title="Tự động phát hiện từ trang hiện tại"
             >
               {groupIdLoading ? '⏳' : '🔍'}
             </button>
           </div>
-          <span className="form-hint">Click 🔍 to auto-detect from the current Facebook group page.</span>
+          <span className="form-hint">Nhấn 🔍 để tự động phát hiện từ trang nhóm Facebook hiện tại.</span>
         </div>
       </div>
 
       {/* Filter Settings */}
       <div className="control-card">
         <div className="form-group">
-          <label htmlFor="keywords">Keywords</label>
+          <label htmlFor="keywords">Từ khóa</label>
           <input
             id="keywords"
             type="text"
-            placeholder="spam, sell, promotion..."
+            placeholder="rác, bán hàng, quảng cáo..."
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
             disabled={running}
             className="form-input"
           />
-          <span className="form-hint">Comma-separated. Posts matching ANY keyword will be deleted.</span>
+          <span className="form-hint">Cách nhau bằng dấu phẩy. Bài viết khớp với BẤT KỲ từ khóa nào sẽ bị xóa.</span>
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label htmlFor="maxPosts">Max posts</label>
+            <label htmlFor="maxPosts">Số bài tối đa</label>
             <input
               id="maxPosts"
               type="number"
@@ -302,7 +301,7 @@ export default function PostCleanerTool() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="fromDate">From date</label>
+            <label htmlFor="fromDate">Từ ngày</label>
             <input
               id="fromDate"
               type="date"
@@ -320,11 +319,11 @@ export default function PostCleanerTool() {
               className="start-btn"
               onClick={handleStart}
             >
-              ▶ Start {MODE_META[mode].label} Cleaner
+              ▶ Bắt đầu dọn dẹp {MODE_META[mode].label}
             </button>
           ) : (
             <button className="stop-btn" onClick={handleStop}>
-              ■ Stop
+              ■ Dừng
             </button>
           )}
         </div>
@@ -333,14 +332,14 @@ export default function PostCleanerTool() {
       {/* Progress Log */}
       <div className="log-card">
         <div className="log-header">
-          <span className="log-title">Progress Log</span>
+          <span className="log-title">Nhật ký tiến trình</span>
           <button className="log-clear" onClick={handleClearLogs} disabled={running}>
-            Clear
+            Xóa nhật ký
           </button>
         </div>
         <div className="log-body" ref={logRef}>
           {logs.length === 0 ? (
-            <p className="log-empty">No activity yet. Select a mode and click Start.</p>
+            <p className="log-empty">Chưa có hoạt động nào. Chọn một chế độ và nhấn Bắt đầu.</p>
           ) : (
             logs.map((entry) => (
               <div key={entry.id} className={`log-entry log-${entry.type}`}>
