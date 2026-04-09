@@ -1,694 +1,1583 @@
 // ─── Font Size Tool ───
-const STORAGE_KEY = 'fb-feed-font-size'
-const STYLE_ID = 'crxjs-fb-font-size'
+const STORAGE_KEY = "fb-feed-font-size";
+const STYLE_ID = "crxjs-fb-font-size";
 
 function applyFontSize(size: number) {
-  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null
+  let style = document.getElementById(
+    STYLE_ID,
+  ) as HTMLStyleElement | null;
 
   if (size === 100) {
-    style?.remove()
-    return
+    style?.remove();
+    return;
   }
 
   if (!style) {
-    style = document.createElement('style')
-    style.id = STYLE_ID
-    document.head.appendChild(style)
+    style =
+      document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.appendChild(style);
   }
 
-  const zoom = size / 100
+  const zoom = size / 100;
   style.textContent = `
     div[role="feed"] {
       zoom: ${zoom} !important;
     }
-  `
+  `;
 }
 
-chrome.storage.local.get(STORAGE_KEY).then((result) => {
-  const size = result[STORAGE_KEY] as number | undefined
-  if (size && size !== 100) {
-    applyFontSize(size)
-  }
-})
+chrome.storage.local
+  .get(STORAGE_KEY)
+  .then((result) => {
+    const size = result[STORAGE_KEY] as
+      | number
+      | undefined;
+    if (size && size !== 100) {
+      applyFontSize(size);
+    }
+  });
 
-chrome.storage.onChanged.addListener((changes) => {
-  if (changes[STORAGE_KEY]) {
-    const size = (changes[STORAGE_KEY].newValue as number) ?? 100
-    applyFontSize(size)
-  }
-})
+chrome.storage.onChanged.addListener(
+  (changes) => {
+    if (changes[STORAGE_KEY]) {
+      const size =
+        (changes[STORAGE_KEY]
+          .newValue as number) ?? 100;
+      applyFontSize(size);
+    }
+  },
+);
 
 // ─── Facebook GraphQL Helpers ───
 function getFBDTSG(): string | null {
   // 1. Try meta tags or specific global variables if they were exposed (not possible in isolated world, so search HTML)
   // 2. Search for common patterns in page source
-  const html = document.documentElement.innerHTML
+  const html =
+    document.documentElement.innerHTML;
 
   // Pattern 1: ["token","..."] or "token":"..."
   const patterns = [
     /["']fb_dtsg["']\s*[:]\s*["']([^"']+)["']/,
     /["']DTSGInitialData["']\s*,\s*\[\]\s*,\s*\{\s*["']token["']\s*:\s*["']([^"']+)["']/,
-    /["']token["']\s*:\s*["']([^"']+)["']\s*,\s*["']async_get_token["']/
-  ]
+    /["']token["']\s*:\s*["']([^"']+)["']\s*,\s*["']async_get_token["']/,
+  ];
 
   for (const pattern of patterns) {
-    const match = html.match(pattern)
-    if (match?.[1]) return match[1]
+    const match = html.match(pattern);
+    if (match?.[1]) return match[1];
   }
 
   // 3. Last resort: check any hidden input named fb_dtsg
-  const input = document.querySelector('input[name="fb_dtsg"]') as HTMLInputElement
-  return input?.value || null
+  const input = document.querySelector(
+    'input[name="fb_dtsg"]',
+  ) as HTMLInputElement;
+  return input?.value || null;
 }
 
 function getUserID(): string | null {
   // 1. Try cookie
-  const cookieMatch = document.cookie.match(/c_user=(\d+)/)
-  if (cookieMatch?.[1]) return cookieMatch[1]
+  const cookieMatch =
+    document.cookie.match(
+      /c_user=(\d+)/,
+    );
+  if (cookieMatch?.[1])
+    return cookieMatch[1];
 
   // 2. Try page source patterns if cookie is inaccessible
-  const html = document.documentElement.innerHTML
+  const html =
+    document.documentElement.innerHTML;
   const patterns = [
     /["']USER_ID["']\s*:\s*["'](\d+)["']/,
     /["']actorID["']\s*:\s*["'](\d+)["']/,
-    /["']ACCOUNT_ID["']\s*:\s*["'](\d+)["']/
-  ]
+    /["']ACCOUNT_ID["']\s*:\s*["'](\d+)["']/,
+  ];
 
   for (const pattern of patterns) {
-    const match = html.match(pattern)
+    const match = html.match(pattern);
     console.log("MATCH:  " + match);
 
-    if (match?.[1]) return match[1]
+    if (match?.[1]) return match[1];
   }
 
-  return null
+  return null;
 }
 
-async function likePost(feedbackId: string): Promise<{ success: boolean; message: string }> {
-  console.log('Attempting to like post:', feedbackId)
-  const fb_dtsg = getFBDTSG()
-  const av = getUserID()
+async function likePost(
+  feedbackId: string,
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  console.log(
+    "Attempting to like post:",
+    feedbackId,
+  );
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
 
   if (!fb_dtsg) {
-    const error = 'Could not find security token (fb_dtsg). If you are on a restricted page, try refreshing.'
-    sendLog(error, 'error')
-    return { success: false, message: error }
+    const error =
+      "Could not find security token (fb_dtsg). If you are on a restricted page, try refreshing.";
+    sendLog(error, "error");
+    return {
+      success: false,
+      message: error,
+    };
   }
 
   if (!av) {
-    const error = 'Could not find User ID. Make sure you are logged into Facebook.'
-    sendLog(error, 'error')
-    return { success: false, message: error }
+    const error =
+      "Could not find User ID. Make sure you are logged into Facebook.";
+    sendLog(error, "error");
+    return {
+      success: false,
+      message: error,
+    };
   }
 
   try {
-    const res = await fetch('https://www.facebook.com/api/graphql/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        'av': av,
-        '__user': av,
-        '__a': '1',
-        'fb_dtsg': fb_dtsg,
-        'fb_api_caller_class': 'RelayModern',
-        'fb_api_req_friendly_name': 'CometUFIFeedbackReactMutation',
-        'variables': JSON.stringify({
-          input: {
-            attribution_id_v2: "CometGroupDiscussionRoot.react,comet.group,via_cold_start," + Date.now(),
-            feedback_id: feedbackId,
-            feedback_reaction_id: "1635855486666999", // Like reaction
-            feedback_source: "PROFILE",
-            is_tracking_encrypted: true,
-            session_id: crypto.randomUUID(),
-            actor_id: av,
-            client_mutation_id: "1"
-          },
-          useDefaultActor: false,
-          __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "CometUFIFeedbackReactMutation",
+          variables: JSON.stringify({
+            input: {
+              attribution_id_v2:
+                "CometGroupDiscussionRoot.react,comet.group,via_cold_start," +
+                Date.now(),
+              feedback_id: feedbackId,
+              feedback_reaction_id:
+                "1635855486666999", // Like reaction
+              feedback_source:
+                "PROFILE",
+              is_tracking_encrypted: true,
+              session_id:
+                crypto.randomUUID(),
+              actor_id: av,
+              client_mutation_id: "1",
+            },
+            useDefaultActor: false,
+            __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+          }),
+          doc_id: "33371893662453814",
         }),
-        'doc_id': '33371893662453814'
-      })
-    })
+      },
+    );
 
-    const text = await res.text()
+    const text = await res.text();
     if (text.includes('"errors"')) {
-      const errorMsg = JSON.parse(text).errors[0].message
-      sendLog(`Failed to like post: ${errorMsg}`, 'error')
-      return { success: false, message: errorMsg }
+      const errorMsg =
+        JSON.parse(text).errors[0]
+          .message;
+      sendLog(
+        `Failed to like post: ${errorMsg}`,
+        "error",
+      );
+      return {
+        success: false,
+        message: errorMsg,
+      };
     } else {
-      const successMsg = 'Successfully liked post!'
-      sendLog(successMsg, 'success')
-      return { success: true, message: successMsg }
+      const successMsg =
+        "Successfully liked post!";
+      sendLog(successMsg, "success");
+      return {
+        success: true,
+        message: successMsg,
+      };
     }
   } catch (err) {
-    const errorMsg = `Error liking post: ${err}`
-    sendLog(errorMsg, 'error')
-    return { success: false, message: errorMsg }
+    const errorMsg = `Error liking post: ${err}`;
+    sendLog(errorMsg, "error");
+    return {
+      success: false,
+      message: errorMsg,
+    };
   }
 }
 
-async function apiDeletePost(storyId: string): Promise<{ success: boolean; message: string }> {
-  const fb_dtsg = getFBDTSG()
-  const av = getUserID()
+async function apiDeletePost(
+  storyId: string,
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
 
   if (!fb_dtsg || !av) {
-    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+    return {
+      success: false,
+      message:
+        "Tokens missing (fb_dtsg or av)",
+    };
   }
 
-  console.log('API Deleting storyId:', storyId, 'with actor:', av)
+  console.log(
+    "API Deleting storyId:",
+    storyId,
+    "with actor:",
+    av,
+  );
 
   try {
-    const res = await fetch('https://www.facebook.com/api/graphql/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        'av': av,
-        '__user': av,
-        '__a': '1',
-        'fb_dtsg': fb_dtsg,
-        'fb_api_caller_class': 'RelayModern',
-        'fb_api_req_friendly_name': 'useCometFeedStoryDeleteMutation',
-        'variables': JSON.stringify({
-          input: {
-            story_id: storyId,
-            story_location: "GROUP", // Switched from PERMALINK
-            actor_id: av,
-            client_mutation_id: Math.floor(Math.random() * 1000).toString()
-          },
-          groupID: null,
-          inviteShortLinkKey: null,
-          renderLocation: null,
-          scale: 1,
-          __relay_internal__pv__groups_comet_use_glvrelayprovider: false
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "useCometFeedStoryDeleteMutation",
+          variables: JSON.stringify({
+            input: {
+              story_id: storyId,
+              story_location: "GROUP", // Switched from PERMALINK
+              actor_id: av,
+              client_mutation_id:
+                Math.floor(
+                  Math.random() * 1000,
+                ).toString(),
+            },
+            groupID: null,
+            inviteShortLinkKey: null,
+            renderLocation: null,
+            scale: 1,
+            __relay_internal__pv__groups_comet_use_glvrelayprovider: false,
+          }),
+          doc_id: "33779779394969988",
         }),
-        'doc_id': '33779779394969988'
-      })
-    })
+      },
+    );
 
-    const text = await res.text()
-    console.log('GraphQL Response:', text)
+    const text = await res.text();
+    console.log(
+      "GraphQL Response:",
+      text,
+    );
 
     if (text.includes('"errors"')) {
-      const parsed = JSON.parse(text)
-      const errorMsg = parsed.errors?.[0]?.message || 'Unknown GraphQL error'
-      const debugInfo = parsed.errors?.[0]?.debug_info || ''
-      return { success: false, message: `${errorMsg} ${debugInfo}`.trim() }
+      const parsed = JSON.parse(text);
+      const errorMsg =
+        parsed.errors?.[0]?.message ||
+        "Unknown GraphQL error";
+      const debugInfo =
+        parsed.errors?.[0]
+          ?.debug_info || "";
+      return {
+        success: false,
+        message:
+          `${errorMsg} ${debugInfo}`.trim(),
+      };
     }
-    return { success: true, message: 'Post deleted successfully' }
+    return {
+      success: true,
+      message:
+        "Post deleted successfully",
+    };
   } catch (err) {
-    console.error('API Delete Error:', err)
-    return { success: false, message: String(err) }
+    console.error(
+      "API Delete Error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
   }
 }
-
 
 // ─── Pending Posts Tool ───
 interface PendingPost {
-  id: string
-  message: string
-  created_time: string
-  author_name: string
-  author_id: string
+  id: string;
+  message: string;
+  created_time: string;
+  author_name: string;
+  author_id: string;
 }
 
 async function getPendingPosts(
   groupId: string,
   count: number = 20,
-  cursor: string | null = null
-): Promise<{ success: boolean; posts?: PendingPost[]; cursor?: string | null; hasNextPage?: boolean; message?: string }> {
-  const fb_dtsg = getFBDTSG()
-  const av = getUserID()
+  cursor: string | null = null,
+): Promise<{
+  success: boolean;
+  posts?: PendingPost[];
+  cursor?: string | null;
+  hasNextPage?: boolean;
+  message?: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
 
   if (!fb_dtsg || !av) {
-    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+    return {
+      success: false,
+      message:
+        "Tokens missing (fb_dtsg or av)",
+    };
   }
 
   try {
-    const res = await fetch('https://www.facebook.com/api/graphql/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        'av': av,
-        '__user': av,
-        '__a': '1',
-        'fb_dtsg': fb_dtsg,
-        'fb_api_caller_class': 'RelayModern',
-        'fb_api_req_friendly_name': 'GroupsCometPendingPostsFeedPaginationQuery',
-        'server_timestamps': 'true',
-        'variables': JSON.stringify({
-          count,
-          cursor: cursor ?? null,
-          feedLocation: 'GROUP_PENDING',
-          feedbackSource: 0,
-          focusCommentID: null,
-          hoistedPostID: null,
-          pendingStoriesOrderBy: null,
-          privacySelectorRenderLocation: 'COMET_STREAM',
-          referringStoryRenderLocation: null,
-          renderLocation: 'group_pending_queue',
-          scale: 1,
-          useDefaultActor: false,
-          id: groupId,
-          '__relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider': true,
-          '__relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider': true,
-          '__relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider': false,
-          '__relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider': false,
-          '__relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider': false,
-          '__relay_internal__pv__IsWorkUserrelayprovider': false,
-          '__relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider': false,
-          '__relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider': true,
-          '__relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider': true,
-          '__relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider': false,
-          '__relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider': false,
-          '__relay_internal__pv__IsMergQAPollsrelayprovider': false,
-          '__relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider': true,
-          '__relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider': false,
-          '__relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider': 'ORIGINAL',
-          '__relay_internal__pv__CometUFIShareActionMigrationrelayprovider': true,
-          '__relay_internal__pv__CometUFISingleLineUFIrelayprovider': true,
-          '__relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider': true,
-          '__relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider': true,
-          '__relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider': 206,
-          '__relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider': false,
-          '__relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider': true,
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "GroupsCometPendingPostsFeedPaginationQuery",
+          server_timestamps: "true",
+          variables: JSON.stringify({
+            count,
+            cursor: cursor ?? null,
+            feedLocation:
+              "GROUP_PENDING",
+            feedbackSource: 0,
+            focusCommentID: null,
+            hoistedPostID: null,
+            pendingStoriesOrderBy: null,
+            privacySelectorRenderLocation:
+              "COMET_STREAM",
+            referringStoryRenderLocation:
+              null,
+            renderLocation:
+              "group_pending_queue",
+            scale: 1,
+            useDefaultActor: false,
+            id: groupId,
+            __relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider: true,
+            __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+            __relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider: false,
+            __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: false,
+            __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+            __relay_internal__pv__IsWorkUserrelayprovider: false,
+            __relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider: false,
+            __relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider: true,
+            __relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider: true,
+            __relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider: false,
+            __relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider: false,
+            __relay_internal__pv__IsMergQAPollsrelayprovider: false,
+            __relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider: true,
+            __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+            __relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider:
+              "ORIGINAL",
+            __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+            __relay_internal__pv__CometUFISingleLineUFIrelayprovider: true,
+            __relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider: true,
+            __relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider: true,
+            __relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider: 206,
+            __relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider: false,
+            __relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider: true,
+          }),
+          doc_id: "26459183580414880",
         }),
-        'doc_id': '26459183580414880',
-      }),
-    })
+      },
+    );
 
-    const text = await res.text()
+    const text = await res.text();
 
     // Facebook trả về nhiều dòng JSON (ndjson), chỉ lấy dòng đầu
-    const firstLine = text.split('\n')[0]
-    const data = JSON.parse(firstLine)
+    const firstLine =
+      text.split("\n")[0];
+    const data = JSON.parse(firstLine);
 
     // Log raw để debug nếu cần
-    console.log('[getPendingPosts] raw response:', text.slice(0, 800))
+    console.log(
+      "[getPendingPosts] raw response:",
+      text.slice(0, 800),
+    );
 
     if (data?.errors) {
-      const errMsg = data.errors[0]?.message || 'GraphQL error'
-      console.error('[getPendingPosts] errors:', data.errors)
-      return { success: false, message: errMsg }
+      const errMsg =
+        data.errors[0]?.message ||
+        "GraphQL error";
+      console.error(
+        "[getPendingPosts] errors:",
+        data.errors,
+      );
+      return {
+        success: false,
+        message: errMsg,
+      };
     }
 
     const section =
-      data?.data?.node?.pending_posts_section_stories   // path phổ biến
-      ?? data?.data?.node?.timeline_feed_units          // fallback 1
-      ?? data?.data?.viewer?.news_feed                  // fallback 2
-    const edges: any[] = section?.edges || []
-    const pageInfo = section?.page_info || {}
+      data?.data?.node
+        ?.pending_posts_section_stories ?? // path phổ biến
+      data?.data?.node
+        ?.timeline_feed_units ?? // fallback 1
+      data?.data?.viewer?.news_feed; // fallback 2
+    const edges: any[] =
+      section?.edges || [];
+    const pageInfo =
+      section?.page_info || {};
 
-    console.log('[getPendingPosts] data path node:', JSON.stringify(data?.data?.node)?.slice(0, 300))
+    console.log(
+      "[getPendingPosts] data path node:",
+      JSON.stringify(
+        data?.data?.node,
+      )?.slice(0, 300),
+    );
 
-    const posts: PendingPost[] = edges.map((e: any) => {
-      const node = e.node || {}
-      const actor = node.actors?.[0] || {}
-      return {
-        id: node.id || '',
-        message: node.message?.text || '',
-        created_time: node.creation_time
-          ? new Date(node.creation_time * 1000).toISOString()
-          : '',
-        author_name: actor.name || '',
-        author_id: actor.id || '',
-      }
-    })
+    const posts: PendingPost[] =
+      edges.map((e: any) => {
+        const node = e.node || {};
+        const actor =
+          node.actors?.[0] || {};
+        return {
+          id: node.id || "",
+          message:
+            node.message?.text || "",
+          created_time:
+            node.creation_time
+              ? new Date(
+                  node.creation_time *
+                    1000,
+                ).toISOString()
+              : "",
+          author_name: actor.name || "",
+          author_id: actor.id || "",
+        };
+      });
 
     return {
       success: true,
       posts,
-      cursor: pageInfo.end_cursor ?? null,
-      hasNextPage: pageInfo.has_next_page ?? false,
-    }
+      cursor:
+        pageInfo.end_cursor ?? null,
+      hasNextPage:
+        pageInfo.has_next_page ?? false,
+    };
   } catch (err) {
-    console.error('getPendingPosts error:', err)
-    return { success: false, message: String(err) }
+    console.error(
+      "getPendingPosts error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
   }
 }
 
 // ─── Post Cleaner Tool ───
 interface CleanerConfig {
-  keywords: string
-  maxPosts: number
-  fromDate: string
+  keywords: string;
+  maxPosts: number;
+  fromDate: string;
 }
 
-let cleanerAborted = false
+let cleanerAborted = false;
 
-function sendLog(text: string, logType: string = 'info') {
-  chrome.runtime.sendMessage({ type: 'CLEANER_LOG', text, logType })
+function sendLog(
+  text: string,
+  logType: string = "info",
+) {
+  chrome.runtime.sendMessage({
+    type: "CLEANER_LOG",
+    text,
+    logType,
+  });
 }
 
 function sendDone(text: string) {
-  chrome.runtime.sendMessage({ type: 'CLEANER_DONE', text })
+  chrome.runtime.sendMessage({
+    type: "CLEANER_DONE",
+    text,
+  });
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function delay(
+  ms: number,
+): Promise<void> {
+  return new Promise((resolve) =>
+    setTimeout(resolve, ms),
+  );
 }
 
-
-function matchesKeywords(text: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return true // No filter = match all
-  return keywords.some((kw) => text.includes(kw.toLowerCase().trim()))
+function matchesKeywords(
+  text: string,
+  keywords: string[],
+): boolean {
+  if (keywords.length === 0)
+    return true; // No filter = match all
+  return keywords.some((kw) =>
+    text.includes(
+      kw.toLowerCase().trim(),
+    ),
+  );
 }
 
+// ─── NDJSON / Streaming Relay parser ───
+// Facebook's GraphQL responses concatenate multiple JSON objects
+// with spaces or newlines. This function splits them by tracking
+// brace depth at the top level.
+function splitTopLevelJsonObjects(
+  text: string,
+): string[] {
+  const results: string[] = [];
+  let depth = 0;
+  let start = -1;
 
-async function runPostCleaner(config: CleanerConfig, token: string, groupId: string): Promise<void> {
-  cleanerAborted = false
-
-  const keywords = config.keywords
-    ? config.keywords.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean)
-    : []
-  const fromDate = config.fromDate ? new Date(config.fromDate) : null
-
-  sendLog(`Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(', ')}]` : 'no keyword filter'}, max=${config.maxPosts}${fromDate ? `, from=${config.fromDate}` : ''}`)
-  sendLog(`Group ID: ${groupId}`)
-
-  let deletedCount = 0
-  let scannedCount = 0
-  let fetchAttempts = 0
-  // const maxFetchAttempts = 50
-  const processedPosts = new Set<string>()
-
-  let nextUrl: string | null = `https://graph.facebook.com/v22.0/${groupId}/feed?access_token=${token}&limit=50`
-
-  while (deletedCount < config.maxPosts && nextUrl) {
-    if (cleanerAborted) {
-      sendDone(`Aborted. Deleted ${deletedCount} post(s).`)
-      return
-    }
-
-    fetchAttempts++
-    sendLog(`Fetching feed from API (page ${fetchAttempts})...`)
-
-    let articles: any[] = []
-    try {
-      const response = await fetch(nextUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'accept': '*/*',
-          'content-type': 'application/x-www-form-urlencoded',
-          'origin': 'https://developers.facebook.com',
-          'referer': 'https://developers.facebook.com/',
-        },
-      })
-      const data = await response.json()
-
-      articles = data.data || []
-
-      if (articles.length === 0) {
-        sendLog('No more articles found from API response.', 'warning')
-        break
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        results.push(
+          text.substring(start, i + 1),
+        );
+        start = -1;
       }
-
-      // Check if there are any new (unprocessed) posts in this batch
-      const newPosts = articles.filter((p: any) => !processedPosts.has(p.id))
-      if (newPosts.length === 0) {
-        sendLog('All returned posts have already been processed. No new posts to scan.', 'warning')
-        break
+    } else if (ch === '"') {
+      // Skip string contents to avoid
+      // counting braces inside strings
+      i++;
+      while (
+        i < text.length &&
+        text[i] !== '"'
+      ) {
+        if (text[i] === "\\") i++; // skip escaped char
+        i++;
       }
-    } catch (err) {
-      sendLog(`API fetch failed: ${err}`, 'error')
-      sendDone('Failed: Graph API error.')
-      return
-    }
-
-    for (const post of articles) {
-      if (cleanerAborted) break
-      if (deletedCount >= config.maxPosts) break
-
-      const postIdRaw = post.id
-      if (processedPosts.has(postIdRaw)) continue
-
-      processedPosts.add(postIdRaw)
-      scannedCount++
-
-      const postText = (post.message || post.story || '').toLowerCase()
-
-      // Keyword filter
-      if (!matchesKeywords(postText, keywords)) continue
-
-      // Date filter (basic: skip if we can't determine date)
-      if (fromDate) {
-        const postDate = new Date(post.updated_time)
-        if (postDate < fromDate) {
-          sendLog(`Post ${scannedCount}: older than fromDate, skipping.`)
-          continue
-        }
-        sendLog(`Post ${scannedCount}: matched keywords, attempting deletion...`)
-      } else {
-        const preview = postText.slice(0, 60).replace(/\n/g, ' ')
-        sendLog(`Post ${scannedCount}: matched "${preview}..."`)
-      }
-
-      // Step 1: Get story ID
-      const postIdParts = postIdRaw.split('_')
-      const postId = postIdParts.length > 1 ? postIdParts[1] : postIdRaw
-      const actorId = getUserID()
-
-      const storyId = actorId && postId ? btoa(`S:_I${actorId}:VK:${postId}`) : null
-
-      if (!storyId) {
-        sendLog(`Could not determine story ID for post ${scannedCount}, skipping.`, 'warning')
-        continue
-      }
-
-      // Step 2: Delete via API
-      sendLog(`Deleting post ${scannedCount} via API...`)
-      const deleteResult = await apiDeletePost(storyId)
-
-      if (!deleteResult.success) {
-        sendLog(`Failed to delete post ${scannedCount}: ${deleteResult.message}`, 'error')
-        continue
-      }
-
-      deletedCount++
-      sendLog(`✓ Post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`, 'success')
-
-      // Wait a bit to avoid rate-limiting
-      await delay(800 + Math.random() * 500)
     }
   }
 
-  sendDone(`Done! Deleted ${deletedCount} post(s), scanned ${scannedCount} post(s).`)
+  return results;
+}
+
+// ─── Feed Posts via GraphQL (cookie-based, no access token needed) ───
+interface FeedPost {
+  id: string; // story ID (base64 encoded)
+  post_id: string; // numeric post ID
+  message: string;
+  created_time: string;
+  author_name: string;
+  author_id: string;
+}
+
+async function getFeedPostsGraphQL(
+  groupId: string,
+  count: number = 3,
+  cursor: string | null = null,
+): Promise<{
+  success: boolean;
+  posts?: FeedPost[];
+  cursor?: string | null;
+  hasNextPage?: boolean;
+  message?: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
+
+  if (!fb_dtsg || !av) {
+    return {
+      success: false,
+      message:
+        "Tokens missing (fb_dtsg or av)",
+    };
+  }
+
+  try {
+    const variables: Record<
+      string,
+      any
+    > = {
+      count,
+      cursor: cursor ?? null,
+      feedLocation: "GROUP",
+      feedType: "DISCUSSION",
+      feedbackSource: 0,
+      filterTopicId: null,
+      focusCommentID: null,
+      privacySelectorRenderLocation:
+        "COMET_STREAM",
+      referringStoryRenderLocation:
+        null,
+      renderLocation: "group",
+      scale: 1,
+      sortingSetting: "CHRONOLOGICAL",
+      stream_initial_count: 1,
+      useDefaultActor: false,
+      id: groupId,
+      __relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider: true,
+      __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+      __relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider: false,
+      __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: false,
+      __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+      __relay_internal__pv__IsWorkUserrelayprovider: false,
+      __relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider: false,
+      __relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider: true,
+      __relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider: true,
+      __relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider: false,
+      __relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider: false,
+      __relay_internal__pv__IsMergQAPollsrelayprovider: false,
+      __relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider: true,
+      __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+      __relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider:
+        "ORIGINAL",
+      __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+      __relay_internal__pv__CometUFISingleLineUFIrelayprovider: true,
+      __relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider: true,
+      __relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider: true,
+      __relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider: 206,
+      __relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider: false,
+      __relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider: true,
+    };
+
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+          "x-fb-friendly-name":
+            "GroupsCometFeedRegularStoriesPaginationQuery",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "GroupsCometFeedRegularStoriesPaginationQuery",
+          server_timestamps: "true",
+          variables:
+            JSON.stringify(variables),
+          doc_id: "26421509580849888",
+        }),
+      },
+    );
+
+    const text = await res.text();
+
+    // Facebook returns streaming relay responses where multiple JSON objects
+    // are concatenated with spaces or newlines (NDJSON).
+    // We must split them by finding top-level {} boundaries.
+    const jsonChunks =
+      splitTopLevelJsonObjects(text);
+    const allNodes: any[] = [];
+    let lastCursor: string | null =
+      null;
+
+    console.log(
+      "[getFeedPostsGraphQL] found",
+      jsonChunks.length,
+      "JSON chunks",
+    );
+
+    for (const chunk of jsonChunks) {
+      try {
+        const json = JSON.parse(chunk);
+
+        // Check for errors in any chunk
+        if (
+          json?.errors &&
+          !json?.data
+        ) {
+          const errMsg =
+            json.errors[0]?.message ||
+            "GraphQL error";
+          console.error(
+            "[getFeedPostsGraphQL] errors:",
+            json.errors,
+          );
+          return {
+            success: false,
+            message: errMsg,
+          };
+        }
+
+        // Base response: data.node.group_feed.edges[]
+        const baseEdges =
+          json?.data?.node?.group_feed
+            ?.edges;
+        if (
+          baseEdges &&
+          Array.isArray(baseEdges)
+        ) {
+          for (const edge of baseEdges) {
+            if (edge.node) {
+              allNodes.push({
+                node: edge.node,
+                cursor: edge.cursor,
+              });
+            }
+          }
+        }
+
+        // Streamed chunks: { path: ["node","group_feed","edges", N], data: { node: {...}, cursor: "..." } }
+        if (
+          json?.data?.node &&
+          json?.path
+        ) {
+          const path = json.path;
+          if (
+            Array.isArray(path) &&
+            path[0] === "node" &&
+            path[1] === "group_feed" &&
+            path[2] === "edges" &&
+            path.length === 4
+          ) {
+            allNodes.push({
+              node: json.data.node,
+              cursor: json.data.cursor,
+            });
+          }
+        }
+      } catch (_) {
+        // Skip unparseable chunks
+      }
+    }
+
+    console.log(
+      "[getFeedPostsGraphQL] parsed nodes:",
+      allNodes.length,
+      "types:",
+      allNodes.map(
+        (n) => n.node?.__typename,
+      ),
+    );
+
+    // Filter out non-Story nodes (e.g. GroupsSectionHeaderUnit)
+    const storyEdges = allNodes.filter(
+      (e) =>
+        e.node?.__typename === "Story",
+    );
+
+    const posts: FeedPost[] =
+      storyEdges.map((e: any) => {
+        const node = e.node || {};
+        // Get message text from nested comet_sections
+        const storyContent =
+          node.comet_sections?.content
+            ?.story;
+        const messageText =
+          storyContent?.message?.text ??
+          node.message?.text ??
+          "";
+
+        // Get author info
+        const actors =
+          storyContent?.actors ||
+          node.actors ||
+          [];
+        const actor = actors[0] || {};
+
+        // Get creation_time from timestamp metadata
+        const metadataArr =
+          node.comet_sections
+            ?.context_layout?.story
+            ?.comet_sections
+            ?.metadata || [];
+        let creationTime = 0;
+        for (const meta of metadataArr) {
+          if (
+            meta?.story?.creation_time
+          ) {
+            creationTime =
+              meta.story.creation_time;
+            break;
+          }
+        }
+
+        // Track last cursor for pagination
+        if (e.cursor)
+          lastCursor = e.cursor;
+
+        return {
+          id: node.id || "",
+          post_id:
+            node.post_id ||
+            storyContent?.post_id ||
+            "",
+          message: messageText,
+          created_time: creationTime
+            ? new Date(
+                creationTime * 1000,
+              ).toISOString()
+            : "",
+          author_name: actor.name || "",
+          author_id: actor.id || "",
+        };
+      });
+
+    return {
+      success: true,
+      posts,
+      cursor: lastCursor,
+      hasNextPage:
+        storyEdges.length >= count,
+    };
+  } catch (err) {
+    console.error(
+      "getFeedPostsGraphQL error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
+  }
+}
+
+// ─── Feed Cleaner (token-based or cookie-based) ───
+async function runPostCleaner(
+  config: CleanerConfig,
+  token: string,
+  groupId: string,
+): Promise<void> {
+  cleanerAborted = false;
+
+  const keywords = config.keywords
+    ? config.keywords
+        .split(",")
+        .map((k) =>
+          k.trim().toLowerCase(),
+        )
+        .filter(Boolean)
+    : [];
+  const fromDate = config.fromDate
+    ? new Date(config.fromDate)
+    : null;
+  const useGraphQL = !token.trim();
+
+  sendLog(
+    `Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no keyword filter"}, max=${config.maxPosts}${fromDate ? `, from=${config.fromDate}` : ""}`,
+  );
+  sendLog(`Group ID: ${groupId}`);
+  sendLog(
+    useGraphQL
+      ? "🔑 No token — using cookie-based GraphQL API"
+      : "🔑 Using access token Graph API",
+  );
+
+  let deletedCount = 0;
+  let scannedCount = 0;
+  let fetchAttempts = 0;
+  const processedPosts =
+    new Set<string>();
+
+  if (useGraphQL) {
+    // ── Cookie-based GraphQL approach ──
+    let cursor: string | null = null;
+
+    while (
+      deletedCount < config.maxPosts
+    ) {
+      if (cleanerAborted) {
+        sendDone(
+          `Aborted. Deleted ${deletedCount} post(s).`,
+        );
+        return;
+      }
+
+      fetchAttempts++;
+      sendLog(
+        `Fetching feed via GraphQL (page ${fetchAttempts})...`,
+      );
+
+      const result =
+        await getFeedPostsGraphQL(
+          groupId,
+          5,
+          cursor,
+        );
+      if (!result.success) {
+        sendLog(
+          `Failed to fetch feed: ${result.message}`,
+          "error",
+        );
+        sendDone("Failed.");
+        return;
+      }
+
+      const posts = result.posts ?? [];
+      if (posts.length === 0) {
+        sendLog(
+          "No more feed posts found.",
+          "warning",
+        );
+        break;
+      }
+
+      // Check for new posts
+      const newPosts = posts.filter(
+        (p) =>
+          !processedPosts.has(
+            p.post_id,
+          ),
+      );
+      if (newPosts.length === 0) {
+        sendLog(
+          "All returned posts already processed.",
+          "warning",
+        );
+        break;
+      }
+
+      sendLog(
+        `Fetched ${posts.length} feed post(s).`,
+      );
+
+      for (const post of posts) {
+        if (cleanerAborted) break;
+        if (
+          deletedCount >=
+          config.maxPosts
+        )
+          break;
+        if (
+          processedPosts.has(
+            post.post_id,
+          )
+        )
+          continue;
+
+        processedPosts.add(
+          post.post_id,
+        );
+        scannedCount++;
+
+        const postText = (
+          post.message || ""
+        ).toLowerCase();
+
+        // Keyword filter
+        if (
+          !matchesKeywords(
+            postText,
+            keywords,
+          )
+        )
+          continue;
+
+        // Date filter
+        if (
+          fromDate &&
+          post.created_time
+        ) {
+          const postDate = new Date(
+            post.created_time,
+          );
+          if (postDate < fromDate) {
+            sendLog(
+              `Post ${scannedCount}: older than fromDate, skipping.`,
+            );
+            continue;
+          }
+        }
+
+        const preview =
+          postText
+            .slice(0, 60)
+            .replace(/\n/g, " ") ||
+          "(no text)";
+        sendLog(
+          `Post ${scannedCount}: "${preview}…" by ${post.author_name || "unknown"} — deleting...`,
+        );
+
+        // The id from GraphQL is already the story ID
+        const deleteResult =
+          await apiDeletePost(post.id);
+        if (!deleteResult.success) {
+          sendLog(
+            `Failed to delete post ${scannedCount}: ${deleteResult.message}`,
+            "error",
+          );
+          continue;
+        }
+
+        deletedCount++;
+        sendLog(
+          `✓ Post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+          "success",
+        );
+        await delay(
+          800 + Math.random() * 500,
+        );
+      }
+
+      if (
+        !result.hasNextPage ||
+        !result.cursor
+      )
+        break;
+      cursor = result.cursor;
+    }
+  } else {
+    // ── Token-based Graph API approach (original) ──
+    let nextUrl: string | null =
+      `https://graph.facebook.com/v22.0/${groupId}/feed?access_token=${token}&limit=50`;
+
+    while (
+      deletedCount < config.maxPosts &&
+      nextUrl
+    ) {
+      if (cleanerAborted) {
+        sendDone(
+          `Aborted. Deleted ${deletedCount} post(s).`,
+        );
+        return;
+      }
+
+      fetchAttempts++;
+      sendLog(
+        `Fetching feed from Graph API (page ${fetchAttempts})...`,
+      );
+
+      let articles: any[] = [];
+      try {
+        const response = await fetch(
+          nextUrl,
+          {
+            method: "GET",
+            credentials: "include",
+            headers: {
+              accept: "*/*",
+              "content-type":
+                "application/x-www-form-urlencoded",
+              origin:
+                "https://developers.facebook.com",
+              referer:
+                "https://developers.facebook.com/",
+            },
+          },
+        );
+        const data =
+          await response.json();
+
+        articles = data.data || [];
+
+        if (articles.length === 0) {
+          sendLog(
+            "No more articles found from API response.",
+            "warning",
+          );
+          break;
+        }
+
+        const newPosts =
+          articles.filter(
+            (p: any) =>
+              !processedPosts.has(p.id),
+          );
+        if (newPosts.length === 0) {
+          sendLog(
+            "All returned posts have already been processed. No new posts to scan.",
+            "warning",
+          );
+          break;
+        }
+      } catch (err) {
+        sendLog(
+          `API fetch failed: ${err}`,
+          "error",
+        );
+        sendDone(
+          "Failed: Graph API error.",
+        );
+        return;
+      }
+
+      for (const post of articles) {
+        if (cleanerAborted) break;
+        if (
+          deletedCount >=
+          config.maxPosts
+        )
+          break;
+
+        const postIdRaw = post.id;
+        if (
+          processedPosts.has(postIdRaw)
+        )
+          continue;
+
+        processedPosts.add(postIdRaw);
+        scannedCount++;
+
+        const postText = (
+          post.message ||
+          post.story ||
+          ""
+        ).toLowerCase();
+
+        // Keyword filter
+        if (
+          !matchesKeywords(
+            postText,
+            keywords,
+          )
+        )
+          continue;
+
+        // Date filter
+        if (fromDate) {
+          const postDate = new Date(
+            post.updated_time,
+          );
+          if (postDate < fromDate) {
+            sendLog(
+              `Post ${scannedCount}: older than fromDate, skipping.`,
+            );
+            continue;
+          }
+          sendLog(
+            `Post ${scannedCount}: matched keywords, attempting deletion...`,
+          );
+        } else {
+          const preview = postText
+            .slice(0, 60)
+            .replace(/\n/g, " ");
+          sendLog(
+            `Post ${scannedCount}: matched "${preview}..."`,
+          );
+        }
+
+        // Get story ID
+        const postIdParts =
+          postIdRaw.split("_");
+        const postId =
+          postIdParts.length > 1
+            ? postIdParts[1]
+            : postIdRaw;
+        const actorId = getUserID();
+        const storyId =
+          actorId && postId
+            ? btoa(
+                `S:_I${actorId}:VK:${postId}`,
+              )
+            : null;
+
+        if (!storyId) {
+          sendLog(
+            `Could not determine story ID for post ${scannedCount}, skipping.`,
+            "warning",
+          );
+          continue;
+        }
+
+        sendLog(
+          `Deleting post ${scannedCount} via API...`,
+        );
+        const deleteResult =
+          await apiDeletePost(storyId);
+
+        if (!deleteResult.success) {
+          sendLog(
+            `Failed to delete post ${scannedCount}: ${deleteResult.message}`,
+            "error",
+          );
+          continue;
+        }
+
+        deletedCount++;
+        sendLog(
+          `✓ Post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+          "success",
+        );
+        await delay(
+          800 + Math.random() * 500,
+        );
+      }
+    }
+  }
+
+  sendDone(
+    `Done! Deleted ${deletedCount} post(s), scanned ${scannedCount} post(s).`,
+  );
 }
 
 // ─── Pending Cleaner ───
-async function runPendingCleaner(config: CleanerConfig, groupId: string): Promise<void> {
-  cleanerAborted = false
+async function runPendingCleaner(
+  config: CleanerConfig,
+  groupId: string,
+): Promise<void> {
+  cleanerAborted = false;
 
   const keywords = config.keywords
-    ? config.keywords.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean)
-    : []
+    ? config.keywords
+        .split(",")
+        .map((k) =>
+          k.trim().toLowerCase(),
+        )
+        .filter(Boolean)
+    : [];
 
-  sendLog(`[Pending] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(', ')}]` : 'no filter'}, max=${config.maxPosts}`)
-  sendLog(`[Pending] Group ID: ${groupId}`)
+  sendLog(
+    `[Pending] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no filter"}, max=${config.maxPosts}`,
+  );
+  sendLog(
+    `[Pending] Group ID: ${groupId}`,
+  );
 
-  let deletedCount = 0
-  let scannedCount = 0
-  let cursor: string | null = null
+  let deletedCount = 0;
+  let scannedCount = 0;
+  let cursor: string | null = null;
 
-  while (deletedCount < config.maxPosts) {
+  while (
+    deletedCount < config.maxPosts
+  ) {
     if (cleanerAborted) {
-      sendDone(`Aborted. Deleted ${deletedCount} pending post(s).`)
-      return
+      sendDone(
+        `Aborted. Deleted ${deletedCount} pending post(s).`,
+      );
+      return;
     }
 
-    sendLog(`Fetching pending posts…`)
-    const result = await getPendingPosts(groupId, 20, cursor)
+    sendLog(`Fetching pending posts…`);
+    const result =
+      await getPendingPosts(
+        groupId,
+        20,
+        cursor,
+      );
     if (!result.success) {
-      sendLog(`Failed to fetch: ${result.message}`, 'error')
-      sendDone('Failed.')
-      return
+      sendLog(
+        `Failed to fetch: ${result.message}`,
+        "error",
+      );
+      sendDone("Failed.");
+      return;
     }
 
-    const posts = result.posts ?? []
+    const posts = result.posts ?? [];
     if (posts.length === 0) {
-      sendLog('No more pending posts found.', 'warning')
-      break
+      sendLog(
+        "No more pending posts found.",
+        "warning",
+      );
+      break;
     }
 
     for (const post of posts) {
-      if (cleanerAborted) break
-      if (deletedCount >= config.maxPosts) break
+      if (cleanerAborted) break;
+      if (
+        deletedCount >= config.maxPosts
+      )
+        break;
 
-      scannedCount++
-      const postText = post.message.toLowerCase()
+      scannedCount++;
+      const postText =
+        post.message.toLowerCase();
 
-      if (!matchesKeywords(postText, keywords)) {
-        sendLog(`Post ${scannedCount}: no keyword match, skipping.`)
-        continue
+      if (
+        !matchesKeywords(
+          postText,
+          keywords,
+        )
+      ) {
+        sendLog(
+          `Post ${scannedCount}: no keyword match, skipping.`,
+        );
+        continue;
       }
 
-      const preview = postText.slice(0, 60).replace(/\n/g, ' ')
-      sendLog(`Post ${scannedCount}: “${preview}…” — deleting...`)
+      const preview = postText
+        .slice(0, 60)
+        .replace(/\n/g, " ");
+      sendLog(
+        `Post ${scannedCount}: “${preview}…” — deleting...`,
+      );
 
       // story_id từ pending GraphQL đã ở dạng chuẩn
-      const deleteResult = await apiDeletePost(post.id)
+      const deleteResult =
+        await apiDeletePost(post.id);
       if (!deleteResult.success) {
-        sendLog(`Failed to delete post ${scannedCount}: ${deleteResult.message}`, 'error')
-        continue
+        sendLog(
+          `Failed to delete post ${scannedCount}: ${deleteResult.message}`,
+          "error",
+        );
+        continue;
       }
 
-      deletedCount++
-      sendLog(`✓ Pending post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`, 'success')
-      await delay(800 + Math.random() * 500)
+      deletedCount++;
+      sendLog(
+        `✓ Pending post ${scannedCount} deleted! (${deletedCount}/${config.maxPosts})`,
+        "success",
+      );
+      await delay(
+        800 + Math.random() * 500,
+      );
     }
 
-    if (!result.hasNextPage || !result.cursor) break
-    cursor = result.cursor
+    if (
+      !result.hasNextPage ||
+      !result.cursor
+    )
+      break;
+    cursor = result.cursor;
   }
 
-  sendDone(`Done! Deleted ${deletedCount} pending post(s), scanned ${scannedCount} total.`)
+  sendDone(
+    `Done! Deleted ${deletedCount} pending post(s), scanned ${scannedCount} total.`,
+  );
 }
 
 // ─── Spam Posts (Modmin Review Folder) ───
 interface SpamPost {
-  id: string          // story ID (base64 encoded)
-  post_id: string     // numeric post ID
-  contentType: string // e.g. GROUP_POST
-  message: string
-  created_time: string
-  author_name: string
-  author_id: string
+  id: string; // story ID (base64 encoded)
+  post_id: string; // numeric post ID
+  contentType: string; // e.g. GROUP_POST
+  message: string;
+  created_time: string;
+  author_name: string;
+  author_id: string;
 }
 
 async function getSpamPosts(
   groupId: string,
   count: number = 10,
-  cursor: string | null = null
-): Promise<{ success: boolean; posts?: SpamPost[]; cursor?: string | null; hasNextPage?: boolean; message?: string }> {
-  const fb_dtsg = getFBDTSG()
-  const av = getUserID()
+  cursor: string | null = null,
+): Promise<{
+  success: boolean;
+  posts?: SpamPost[];
+  cursor?: string | null;
+  hasNextPage?: boolean;
+  message?: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
 
   if (!fb_dtsg || !av) {
-    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+    return {
+      success: false,
+      message:
+        "Tokens missing (fb_dtsg or av)",
+    };
   }
 
   try {
-    const variables: Record<string, any> = {
+    const variables: Record<
+      string,
+      any
+    > = {
       contentType: null,
       count,
       cursor: cursor ?? null,
-      feedLocation: 'GROUPS_MODMIN_REVIEW_FOLDER',
+      feedLocation:
+        "GROUPS_MODMIN_REVIEW_FOLDER",
       feedbackSource: 0,
       focusCommentID: null,
-      privacySelectorRenderLocation: 'COMET_STREAM',
-      referringStoryRenderLocation: null,
-      renderLocation: 'groups_modmin_review_folder',
+      privacySelectorRenderLocation:
+        "COMET_STREAM",
+      referringStoryRenderLocation:
+        null,
+      renderLocation:
+        "groups_modmin_review_folder",
       scale: 1,
       searchTerm: null,
       useDefaultActor: false,
       id: groupId,
-      '__relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider': true,
-      '__relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider': true,
-      '__relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider': false,
-      '__relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider': false,
-      '__relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider': false,
-      '__relay_internal__pv__IsWorkUserrelayprovider': false,
-      '__relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider': false,
-      '__relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider': true,
-      '__relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider': true,
-      '__relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider': false,
-      '__relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider': false,
-      '__relay_internal__pv__IsMergQAPollsrelayprovider': false,
-      '__relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider': true,
-      '__relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider': false,
-      '__relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider': 'ORIGINAL',
-      '__relay_internal__pv__CometUFIShareActionMigrationrelayprovider': true,
-      '__relay_internal__pv__CometUFISingleLineUFIrelayprovider': true,
-      '__relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider': true,
-      '__relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider': true,
-      '__relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider': 206,
-      '__relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider': false,
-      '__relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider': true,
-    }
+      __relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider: true,
+      __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+      __relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider: false,
+      __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: false,
+      __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+      __relay_internal__pv__IsWorkUserrelayprovider: false,
+      __relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider: false,
+      __relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider: true,
+      __relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider: true,
+      __relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider: false,
+      __relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider: false,
+      __relay_internal__pv__IsMergQAPollsrelayprovider: false,
+      __relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider: true,
+      __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+      __relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider:
+        "ORIGINAL",
+      __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+      __relay_internal__pv__CometUFISingleLineUFIrelayprovider: true,
+      __relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider: true,
+      __relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider: true,
+      __relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider: 206,
+      __relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider: false,
+      __relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider: true,
+    };
 
-    const res = await fetch('https://www.facebook.com/api/graphql/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'x-fb-friendly-name': 'GroupsCometModminReviewFolderContentContainerQuery',
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+          "x-fb-friendly-name":
+            "GroupsCometModminReviewFolderContentContainerQuery",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "GroupsCometModminReviewFolderContentContainerQuery",
+          server_timestamps: "true",
+          variables:
+            JSON.stringify(variables),
+          doc_id: "34904810272499153",
+        }),
       },
-      body: new URLSearchParams({
-        'av': av,
-        '__user': av,
-        '__a': '1',
-        'fb_dtsg': fb_dtsg,
-        'fb_api_caller_class': 'RelayModern',
-        'fb_api_req_friendly_name': 'GroupsCometModminReviewFolderContentContainerQuery',
-        'server_timestamps': 'true',
-        'variables': JSON.stringify(variables),
-        'doc_id': '34904810272499153',
-      }),
-    })
+    );
 
-    const text = await res.text()
+    const text = await res.text();
 
     // Facebook may return multiple JSON lines (ndjson)
-    const firstLine = text.split('\n')[0]
-    const data = JSON.parse(firstLine)
+    const firstLine =
+      text.split("\n")[0];
+    const data = JSON.parse(firstLine);
 
-    console.log('[getSpamPosts] raw response:', text.slice(0, 800))
+    console.log(
+      "[getSpamPosts] raw response:",
+      text.slice(0, 800),
+    );
 
     if (data?.errors) {
-      const errMsg = data.errors[0]?.message || 'GraphQL error'
-      console.error('[getSpamPosts] errors:', data.errors)
-      return { success: false, message: errMsg }
+      const errMsg =
+        data.errors[0]?.message ||
+        "GraphQL error";
+      console.error(
+        "[getSpamPosts] errors:",
+        data.errors,
+      );
+      return {
+        success: false,
+        message: errMsg,
+      };
     }
 
-    const folder = data?.data?.node?.modmin_review_folder
-    const edges: any[] = folder?.edges || []
-    const pageInfo = folder?.page_info || {}
+    const folder =
+      data?.data?.node
+        ?.modmin_review_folder;
+    const edges: any[] =
+      folder?.edges || [];
+    const pageInfo =
+      folder?.page_info || {};
 
-    const posts: SpamPost[] = edges.map((e: any) => {
-      const node = e.node || {}
-      // Get message from the story content - try multiple paths
-      const storyContent = node.comet_sections?.content?.story
-      const messageText =
-        storyContent?.message?.text
-        ?? storyContent?.comet_sections?.message?.story?.message?.text
-        ?? node.message?.text
-        ?? ''
+    const posts: SpamPost[] = edges.map(
+      (e: any) => {
+        const node = e.node || {};
+        // Get message from the story content - try multiple paths
+        const storyContent =
+          node.comet_sections?.content
+            ?.story;
+        const messageText =
+          storyContent?.message?.text ??
+          storyContent?.comet_sections
+            ?.message?.story?.message
+            ?.text ??
+          node.message?.text ??
+          "";
 
-      // Get author info from feedback.owning_profile or actors
-      const owningProfile = node.feedback?.owning_profile || {}
-      const actor = storyContent?.actors?.[0] || {}
+        // Get author info from feedback.owning_profile or actors
+        const owningProfile =
+          node.feedback
+            ?.owning_profile || {};
+        const actor =
+          storyContent?.actors?.[0] ||
+          {};
 
-      return {
-        id: node.id || '',
-        post_id: node.post_id || storyContent?.post_id || '',
-        contentType: node.group_reportable_type || 'GROUP_POST',
-        message: messageText,
-        created_time: storyContent?.creation_time
-          ? new Date(storyContent.creation_time * 1000).toISOString()
-          : (node.creation_time ? new Date(node.creation_time * 1000).toISOString() : ''),
-        author_name: owningProfile.name || actor.name || '',
-        author_id: owningProfile.id || actor.id || '',
-      }
-    })
+        return {
+          id: node.id || "",
+          post_id:
+            node.post_id ||
+            storyContent?.post_id ||
+            "",
+          contentType:
+            node.group_reportable_type ||
+            "GROUP_POST",
+          message: messageText,
+          created_time:
+            storyContent?.creation_time
+              ? new Date(
+                  storyContent.creation_time *
+                    1000,
+                ).toISOString()
+              : node.creation_time
+                ? new Date(
+                    node.creation_time *
+                      1000,
+                  ).toISOString()
+                : "",
+          author_name:
+            owningProfile.name ||
+            actor.name ||
+            "",
+          author_id:
+            owningProfile.id ||
+            actor.id ||
+            "",
+        };
+      },
+    );
 
     return {
       success: true,
       posts,
-      cursor: pageInfo.end_cursor ?? edges[edges.length - 1]?.cursor ?? null,
-      hasNextPage: pageInfo.has_next_page ?? (edges.length >= count),
-    }
+      cursor:
+        pageInfo.end_cursor ??
+        edges[edges.length - 1]
+          ?.cursor ??
+        null,
+      hasNextPage:
+        pageInfo.has_next_page ??
+        edges.length >= count,
+    };
   } catch (err) {
-    console.error('getSpamPosts error:', err)
-    return { success: false, message: String(err) }
+    console.error(
+      "getSpamPosts error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
   }
 }
 
@@ -697,221 +1586,385 @@ async function apiDeclineSpamPost(
   groupId: string,
   storyId: string,
   memberId: string,
-  contentType: string = 'GROUP_POST'
-): Promise<{ success: boolean; message: string }> {
-  const fb_dtsg = getFBDTSG()
-  const av = getUserID()
+  contentType: string = "GROUP_POST",
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+  const av = getUserID();
 
   if (!fb_dtsg || !av) {
-    return { success: false, message: 'Tokens missing (fb_dtsg or av)' }
+    return {
+      success: false,
+      message:
+        "Tokens missing (fb_dtsg or av)",
+    };
   }
 
-  console.log('Declining spam post:', { groupId, storyId, memberId, contentType })
+  console.log("Declining spam post:", {
+    groupId,
+    storyId,
+    memberId,
+    contentType,
+  });
 
   try {
-    const res = await fetch('https://www.facebook.com/api/graphql/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'x-fb-friendly-name': 'GroupsCometModminReviewFolderDeclineContentMutation',
-      },
-      body: new URLSearchParams({
-        'av': av,
-        '__user': av,
-        '__a': '1',
-        'fb_dtsg': fb_dtsg,
-        'fb_api_caller_class': 'RelayModern',
-        'fb_api_req_friendly_name': 'GroupsCometModminReviewFolderDeclineContentMutation',
-        'server_timestamps': 'true',
-        'variables': JSON.stringify({
-          input: {
-            action_source: 'GROUP_MODMIN_REVIEW_FOLDER',
-            group_id: groupId,
-            story_id: storyId,
-            actor_id: av,
-            client_mutation_id: Math.floor(Math.random() * 1000).toString(),
-          },
-          contentType,
-          member_id: memberId,
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+          "x-fb-friendly-name":
+            "GroupsCometModminReviewFolderDeclineContentMutation",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "GroupsCometModminReviewFolderDeclineContentMutation",
+          server_timestamps: "true",
+          variables: JSON.stringify({
+            input: {
+              action_source:
+                "GROUP_MODMIN_REVIEW_FOLDER",
+              group_id: groupId,
+              story_id: storyId,
+              actor_id: av,
+              client_mutation_id:
+                Math.floor(
+                  Math.random() * 1000,
+                ).toString(),
+            },
+            contentType,
+            member_id: memberId,
+          }),
+          doc_id: "30216535437945305",
         }),
-        'doc_id': '30216535437945305',
-      }),
-    })
+      },
+    );
 
-    const text = await res.text()
-    console.log('Decline spam response:', text.slice(0, 500))
+    const text = await res.text();
+    console.log(
+      "Decline spam response:",
+      text.slice(0, 500),
+    );
 
     if (text.includes('"errors"')) {
-      const parsed = JSON.parse(text)
-      const errorMsg = parsed.errors?.[0]?.message || 'Unknown GraphQL error'
-      return { success: false, message: errorMsg }
+      const parsed = JSON.parse(text);
+      const errorMsg =
+        parsed.errors?.[0]?.message ||
+        "Unknown GraphQL error";
+      return {
+        success: false,
+        message: errorMsg,
+      };
     }
-    return { success: true, message: 'Spam post declined successfully' }
+    return {
+      success: true,
+      message:
+        "Spam post declined successfully",
+    };
   } catch (err) {
-    console.error('Decline spam error:', err)
-    return { success: false, message: String(err) }
+    console.error(
+      "Decline spam error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
   }
 }
 
 // ─── Spam Cleaner ───
-async function runSpamCleaner(config: CleanerConfig, groupId: string): Promise<void> {
-  cleanerAborted = false
+async function runSpamCleaner(
+  config: CleanerConfig,
+  groupId: string,
+): Promise<void> {
+  cleanerAborted = false;
 
   const keywords = config.keywords
-    ? config.keywords.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean)
-    : []
+    ? config.keywords
+        .split(",")
+        .map((k) =>
+          k.trim().toLowerCase(),
+        )
+        .filter(Boolean)
+    : [];
 
-  sendLog(`[Spam] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(', ')}]` : 'no filter (delete all)'}, max=${config.maxPosts}`)
-  sendLog(`[Spam] Group ID: ${groupId}`)
+  sendLog(
+    `[Spam] Filters: ${keywords.length > 0 ? `keywords=[${keywords.join(", ")}]` : "no filter (delete all)"}, max=${config.maxPosts}`,
+  );
+  sendLog(
+    `[Spam] Group ID: ${groupId}`,
+  );
 
-  let deletedCount = 0
-  let scannedCount = 0
-  let cursor: string | null = null
+  let deletedCount = 0;
+  let scannedCount = 0;
+  let cursor: string | null = null;
 
-  while (deletedCount < config.maxPosts) {
+  while (
+    deletedCount < config.maxPosts
+  ) {
     if (cleanerAborted) {
-      sendDone(`Aborted. Declined ${deletedCount} spam post(s).`)
-      return
+      sendDone(
+        `Aborted. Declined ${deletedCount} spam post(s).`,
+      );
+      return;
     }
 
-    sendLog(`Fetching spam posts…`)
-    const result = await getSpamPosts(groupId, 10, cursor)
+    sendLog(`Fetching spam posts…`);
+    const result = await getSpamPosts(
+      groupId,
+      10,
+      cursor,
+    );
     if (!result.success) {
-      sendLog(`Failed to fetch spam posts: ${result.message}`, 'error')
-      sendDone('Failed.')
-      return
+      sendLog(
+        `Failed to fetch spam posts: ${result.message}`,
+        "error",
+      );
+      sendDone("Failed.");
+      return;
     }
 
-    const posts = result.posts ?? []
+    const posts = result.posts ?? [];
     if (posts.length === 0) {
-      sendLog('No more spam posts found.', 'warning')
-      break
+      sendLog(
+        "No more spam posts found.",
+        "warning",
+      );
+      break;
     }
 
-    sendLog(`Fetched ${posts.length} spam post(s).`)
+    sendLog(
+      `Fetched ${posts.length} spam post(s).`,
+    );
 
     for (const post of posts) {
-      if (cleanerAborted) break
-      if (deletedCount >= config.maxPosts) break
+      if (cleanerAborted) break;
+      if (
+        deletedCount >= config.maxPosts
+      )
+        break;
 
-      scannedCount++
-      const postText = (post.message || '').toLowerCase()
+      scannedCount++;
+      const postText = (
+        post.message || ""
+      ).toLowerCase();
 
-      if (!matchesKeywords(postText, keywords)) {
-        const preview = postText.slice(0, 40).replace(/\n/g, ' ') || '(no text)'
-        sendLog(`Post ${scannedCount}: no keyword match, skipping. "${preview}…"`)
-        continue
+      if (
+        !matchesKeywords(
+          postText,
+          keywords,
+        )
+      ) {
+        const preview =
+          postText
+            .slice(0, 40)
+            .replace(/\n/g, " ") ||
+          "(no text)";
+        sendLog(
+          `Post ${scannedCount}: no keyword match, skipping. "${preview}…"`,
+        );
+        continue;
       }
 
-      const preview = postText.slice(0, 60).replace(/\n/g, ' ') || '(no text)'
-      sendLog(`Post ${scannedCount}: "${preview}…" by ${post.author_name || 'unknown'} — declining...`)
+      const preview =
+        postText
+          .slice(0, 60)
+          .replace(/\n/g, " ") ||
+        "(no text)";
+      sendLog(
+        `Post ${scannedCount}: "${preview}…" by ${post.author_name || "unknown"} — declining...`,
+      );
 
-      const declineResult = await apiDeclineSpamPost(groupId, post.id, post.author_id, post.contentType)
+      const declineResult =
+        await apiDeclineSpamPost(
+          groupId,
+          post.id,
+          post.author_id,
+          post.contentType,
+        );
       if (!declineResult.success) {
-        sendLog(`Failed to decline spam post ${scannedCount}: ${declineResult.message}`, 'error')
-        continue
+        sendLog(
+          `Failed to decline spam post ${scannedCount}: ${declineResult.message}`,
+          "error",
+        );
+        continue;
       }
 
-      deletedCount++
-      sendLog(`✓ Spam post ${scannedCount} declined! (${deletedCount}/${config.maxPosts})`, 'success')
-      await delay(800 + Math.random() * 500)
+      deletedCount++;
+      sendLog(
+        `✓ Spam post ${scannedCount} declined! (${deletedCount}/${config.maxPosts})`,
+        "success",
+      );
+      await delay(
+        800 + Math.random() * 500,
+      );
     }
 
-    if (!result.hasNextPage || !result.cursor) break
-    cursor = result.cursor
+    if (
+      !result.hasNextPage ||
+      !result.cursor
+    )
+      break;
+    cursor = result.cursor;
   }
 
-  sendDone(`Done! Declined ${deletedCount} spam post(s), scanned ${scannedCount} total.`)
+  sendDone(
+    `Done! Declined ${deletedCount} spam post(s), scanned ${scannedCount} total.`,
+  );
 }
 
 // ─── Message Listener ───
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'PING') {
-    sendResponse({ ok: true })
-    return
-  }
+chrome.runtime.onMessage.addListener(
+  (message, _sender, sendResponse) => {
+    if (message.type === "PING") {
+      sendResponse({ ok: true });
+      return;
+    }
 
-  if (message.type === 'SET_FONT_SIZE') {
-    applyFontSize(message.size)
-    sendResponse({ ok: true })
-  }
+    if (
+      message.type === "SET_FONT_SIZE"
+    ) {
+      applyFontSize(message.size);
+      sendResponse({ ok: true });
+    }
 
-  if (message.type === 'GET_GROUP_ID') {
-    const html = document.documentElement.innerHTML
-    // Search for groupID patterns in the page source
-    const patterns = [
-      /"groupID"\s*:\s*"(\d+)"/,
-      /"group_id"\s*:\s*"(\d+)"/,
-      /\/groups\/(\d+)/,
-      /"groupId"\s*:\s*"(\d+)"/,
-    ]
-    let foundGroupId: string | null = null
-    for (const pattern of patterns) {
-      const match = html.match(pattern)
-      if (match?.[1]) {
-        foundGroupId = match[1]
-        break
+    if (
+      message.type === "GET_GROUP_ID"
+    ) {
+      const html =
+        document.documentElement
+          .innerHTML;
+      // Search for groupID patterns in the page source
+      const patterns = [
+        /"groupID"\s*:\s*"(\d+)"/,
+        /"group_id"\s*:\s*"(\d+)"/,
+        /\/groups\/(\d+)/,
+        /"groupId"\s*:\s*"(\d+)"/,
+      ];
+      let foundGroupId: string | null =
+        null;
+      for (const pattern of patterns) {
+        const match =
+          html.match(pattern);
+        if (match?.[1]) {
+          foundGroupId = match[1];
+          break;
+        }
       }
-    }
-    sendResponse({ groupId: foundGroupId })
-    return
-  }
-
-  if (message.type === 'START_POST_CLEANER') {
-    sendResponse({ ok: true })
-    runPostCleaner(message.config as CleanerConfig, message.token as string, message.groupId as string)
-  }
-
-  if (message.type === 'START_PENDING_CLEANER') {
-    sendResponse({ ok: true })
-    runPendingCleaner(message.config as CleanerConfig, message.groupId as string)
-  }
-
-  if (message.type === 'START_SPAM_CLEANER') {
-    sendResponse({ ok: true })
-    runSpamCleaner(message.config as CleanerConfig, message.groupId as string)
-  }
-
-  if (message.type === 'TEST_DELETE_POST') {
-    const actorId = getUserID()
-    if (!actorId) {
-      sendResponse({ success: false, message: 'Could not find User ID' })
-      return
+      sendResponse({
+        groupId: foundGroupId,
+      });
+      return;
     }
 
-    let postId = message.postId
-    // Extract short ID if formatted as "groupid_postid"
-    if (postId.includes('_')) {
-      postId = postId.split('_')[1]
+    if (
+      message.type ===
+      "START_POST_CLEANER"
+    ) {
+      sendResponse({ ok: true });
+      runPostCleaner(
+        message.config as CleanerConfig,
+        message.token as string,
+        message.groupId as string,
+      );
     }
 
-    // Use refined Comet story ID format: S:_I<uid>:VK:<pid>
-    const storyId = btoa(`S:_I${actorId}:VK:${postId}`)
-    apiDeletePost(storyId).then(sendResponse)
-    return true
-  }
+    if (
+      message.type ===
+      "START_PENDING_CLEANER"
+    ) {
+      sendResponse({ ok: true });
+      runPendingCleaner(
+        message.config as CleanerConfig,
+        message.groupId as string,
+      );
+    }
 
-  if (message.type === 'LIKE_POST') {
-    likePost(message.feedbackId).then(sendResponse)
-    return true // Keep channel open for async response
-  }
+    if (
+      message.type ===
+      "START_SPAM_CLEANER"
+    ) {
+      sendResponse({ ok: true });
+      runSpamCleaner(
+        message.config as CleanerConfig,
+        message.groupId as string,
+      );
+    }
 
-  if (message.type === 'GET_PENDING_POSTS') {
-    getPendingPosts(
-      message.groupId as string,
-      (message.count as number) || 20,
-      (message.cursor as string | null) || null
-    ).then(sendResponse)
-    return true // Keep channel open for async response
-  }
+    if (
+      message.type ===
+      "TEST_DELETE_POST"
+    ) {
+      const actorId = getUserID();
+      if (!actorId) {
+        sendResponse({
+          success: false,
+          message:
+            "Could not find User ID",
+        });
+        return;
+      }
 
-  if (message.type === 'GET_SPAM_POSTS') {
-    getSpamPosts(
-      message.groupId as string,
-      (message.count as number) || 10,
-      (message.cursor as string | null) || null
-    ).then(sendResponse)
-    return true // Keep channel open for async response
-  }
-})
+      let postId = message.postId;
+      // Extract short ID if formatted as "groupid_postid"
+      if (postId.includes("_")) {
+        postId = postId.split("_")[1];
+      }
+
+      // Use refined Comet story ID format: S:_I<uid>:VK:<pid>
+      const storyId = btoa(
+        `S:_I${actorId}:VK:${postId}`,
+      );
+      apiDeletePost(storyId).then(
+        sendResponse,
+      );
+      return true;
+    }
+
+    if (message.type === "LIKE_POST") {
+      likePost(message.feedbackId).then(
+        sendResponse,
+      );
+      return true; // Keep channel open for async response
+    }
+
+    if (
+      message.type ===
+      "GET_PENDING_POSTS"
+    ) {
+      getPendingPosts(
+        message.groupId as string,
+        (message.count as number) || 20,
+        (message.cursor as
+          | string
+          | null) || null,
+      ).then(sendResponse);
+      return true; // Keep channel open for async response
+    }
+
+    if (
+      message.type === "GET_SPAM_POSTS"
+    ) {
+      getSpamPosts(
+        message.groupId as string,
+        (message.count as number) || 10,
+        (message.cursor as
+          | string
+          | null) || null,
+      ).then(sendResponse);
+      return true; // Keep channel open for async response
+    }
+  },
+);

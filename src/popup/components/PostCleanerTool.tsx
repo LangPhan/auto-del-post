@@ -135,10 +135,6 @@ export default function PostCleanerTool() {
   const handleStart = async () => {
     if (running) return
 
-    if (mode === 'feed' && !token.trim()) {
-      addLog('Error: Please enter your access token first.', 'error')
-      return
-    }
 
     if (!groupId.trim()) {
       addLog('Error: Please enter or detect Group ID first.', 'error')
@@ -246,7 +242,7 @@ export default function PostCleanerTool() {
               disabled={running}
               className="form-input"
             />
-            <span className="form-hint">Your token is saved locally and persists across sessions.</span>
+            <span className="form-hint">Optional. If empty, uses cookie-based GraphQL (no token needed).</span>
           </div>
         )}
 
