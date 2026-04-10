@@ -1,78 +1,53 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #1e2a45;
+  --accent: #6c63ff;
+  --accent-hover: #5a52e0;
+  --accent-glow: rgba(108, 99, 255, 0.25);
+  --text-primary: #e8e8f0;
+  --text-secondary: #8b8da3;
+  --text-muted: #5a5c72;
+  --border: rgba(108, 99, 255, 0.15);
+  --success: #4ade80;
+  --danger: #f87171;
+  --warning: #fbbf24;
+
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-height: 100vh;
+  width: 100%;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.card {
-  padding: 2em;
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-glow);
 }
