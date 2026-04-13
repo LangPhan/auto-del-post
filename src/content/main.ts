@@ -211,6 +211,23 @@ async function likePost(
   }
 }
 
+async function decrementUsageLimit(): Promise<{ success: boolean; newLimit?: number; message?: string }> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "DECREMENT_USAGE" }, (res) => {
+      if (!res) {
+        resolve({ success: false, message: "Không thể kết nối với dịch vụ nền" });
+        return;
+      }
+      if (res.success && res.data) {
+        // Appwrite should return the updated usage limit
+        resolve({ success: true, newLimit: res.data.usageLimit });
+      } else {
+        resolve({ success: false, message: res.error || "Lỗi cập nhật giới hạn" });
+      }
+    });
+  });
+}
+
 async function apiDeletePost(
   storyId: string,
 ): Promise<{
@@ -297,6 +314,18 @@ async function apiDeletePost(
           `${errorMsg} ${debugInfo}`.trim(),
       };
     }
+    
+    // Giảm giới hạn token sau khi xóa thành công
+    const usageRes = await decrementUsageLimit();
+    if (!usageRes.success) {
+      sendLog("Lỗi cập nhật License: " + usageRes.message, "warning");
+    } else if (usageRes.newLimit !== undefined && usageRes.newLimit <= 0) {
+      sendLog("License Token của bạn đã hết lượt sử dụng (usageLimit = 0). Tiến trình sẽ tự động dừng lại.", "error");
+      if (cleanerAbortController) {
+        cleanerAbortController.abort();
+      }
+    }
+
     return {
       success: true,
       message:

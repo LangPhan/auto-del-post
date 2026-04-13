@@ -22,6 +22,7 @@ export default defineManifest({
   ],
   host_permissions: [
     'https://*.facebook.com/*',
+    'https://*.appwrite.run/*'
   ],
   content_scripts: [{
     js: ['src/content/main.ts'],
@@ -30,5 +31,9 @@ export default defineManifest({
   }],
   side_panel: {
     default_path: 'src/sidepanel/index.html',
+  },
+  background: {
+    service_worker: 'src/background/index.ts',
+    type: 'module',
   },
 })

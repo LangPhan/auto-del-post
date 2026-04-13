@@ -4,8 +4,9 @@ import {
 } from "react";
 import "./App.css";
 import PostCleanerTool from "./components/PostCleanerTool";
+import SettingsTool from "@/popup/components/SettingsTool";
 
-type Tab = "post-cleaner";
+type Tab = "post-cleaner" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] =
@@ -32,6 +33,14 @@ export default function App() {
         >
           🧹 Dọn dẹp bài viết
         </button>
+        <button
+          className={`sp-tab ${activeTab === "settings" ? "sp-tab-active" : ""}`}
+          onClick={() =>
+            setActiveTab("settings")
+          }
+        >
+          ⚙️ Cài đặt
+        </button>
       </nav>
 
       <div className="sp-content">
@@ -43,6 +52,15 @@ export default function App() {
           }
         >
           <PostCleanerTool />
+        </Activity>
+        <Activity
+          mode={
+            activeTab === "settings"
+              ? "visible"
+              : "hidden"
+          }
+        >
+          <SettingsTool />
         </Activity>
       </div>
 

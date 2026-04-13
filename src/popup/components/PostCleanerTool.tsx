@@ -141,15 +141,50 @@ export default function PostCleanerTool() {
       return
     }
 
-    const config: CleanerConfig = {
-      keywords: keywords.trim(),
-      maxPosts,
-      fromDate,
-    }
-
     setRunning(true)
     setLogs([])
-    addLog(`Đang bắt đầu dọn dẹp ${MODE_META[mode].label}...`, 'info')
+
+    // Validate License Token trước khi chạy
+    addLog('Đang kiểm tra License Token...', 'info')
+    const storageRes = await chrome.storage.local.get(['fb-app-token', 'fb-device-id'])
+    const appToken = storageRes['fb-app-token']
+    const deviceId = storageRes['fb-device-id']
+
+    if (!appToken) {
+      addLog('Lỗi: Bạn chưa thiết lập License Token. Vui lòng sang tab Cài đặt.', 'error')
+      setRunning(false)
+      return
+    }
+
+      // Gọi background script để validate token 
+      const validateRes = await new Promise<any>((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'VALIDATE_LICENSE', token: appToken, deviceId },
+          (res) => resolve(res)
+        )
+      })
+
+      if (!validateRes || !validateRes.success || !validateRes.data?.valid) {
+        addLog('Lỗi: License Token không hợp lệ, đã hết hạn hoặc hết lượt.', 'error')
+        setRunning(false)
+        return
+      }
+
+      if (validateRes.data.usageLimit <= 0) {
+        addLog('Lỗi: License Token của bạn đã hết lượt dọn dẹp (usageLimit = 0).', 'error')
+        setRunning(false)
+        return
+      }
+
+      addLog(`Token xác thực thành công. Lượt còn lại: ${validateRes.data.usageLimit}`, 'success')
+      
+      const config: CleanerConfig = {
+        keywords: keywords.trim(),
+        maxPosts,
+        fromDate,
+      }
+
+      addLog(`Đang bắt đầu dọn dẹp ${MODE_META[mode].label}...`, 'info')
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })

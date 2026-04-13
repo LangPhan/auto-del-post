@@ -4,8 +4,9 @@ import {
 } from "react";
 import "./App.css";
 import PostCleanerTool from "./components/PostCleanerTool";
+import SettingsTool from "./components/SettingsTool";
 
-type Tab = "font-size" | "post-cleaner";
+type Tab = "font-size" | "post-cleaner" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] =
@@ -42,6 +43,14 @@ export default function App() {
         >
           🧹 Dọn dẹp bài viết
         </button>
+        <button
+          className={`tab ${activeTab === "settings" ? "tab-active" : ""}`}
+          onClick={() =>
+            setActiveTab("settings")
+          }
+        >
+          ⚙️ Cài đặt
+        </button>
       </nav>
 
       {/* <Activity mode={activeTab === "font-size" ? "visible" : "hidden"}>
@@ -55,6 +64,15 @@ export default function App() {
         }
       >
         <PostCleanerTool />
+      </Activity>
+      <Activity
+        mode={
+          activeTab === "settings"
+            ? "visible"
+            : "hidden"
+        }
+      >
+        <SettingsTool />
       </Activity>
 
       <footer className="popup-footer">
