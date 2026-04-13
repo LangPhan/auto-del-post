@@ -12,7 +12,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }),
     })
       .then((res) => res.json())
-      .then((data) => sendResponse({ success: true, data }))
+      .then((data) => {
+        if (data && data.usageLimit !== undefined) {
+          chrome.storage.local.set({ 'fb-usage-limit': data.usageLimit });
+        }
+        sendResponse({ success: true, data });
+      })
       .catch((err) => sendResponse({ success: false, error: err.toString() }));
     return true; // keep alive for async
   }
@@ -31,7 +36,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }),
       })
         .then((res) => res.json())
-        .then((data) => sendResponse({ success: true, data }))
+        .then((data) => {
+          if (data && data.usageLimit !== undefined) {
+            chrome.storage.local.set({ 'fb-usage-limit': data.usageLimit });
+          }
+          sendResponse({ success: true, data });
+        })
         .catch((err) => sendResponse({ success: false, error: err.toString() }));
     });
     

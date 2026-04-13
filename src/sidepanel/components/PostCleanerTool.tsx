@@ -34,6 +34,7 @@ export default function PostCleanerTool() {
   const [token, setToken] = useState('')
   const [groupId, setGroupId] = useState('')
   const [groupIdLoading, setGroupIdLoading] = useState(false)
+  const [usageLimit, setUsageLimit] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const logIdRef = useRef(0)
 
@@ -57,12 +58,22 @@ export default function PostCleanerTool() {
     return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
-  // Load token and groupId from storage on mount
+  // Load token, groupId, and usageLimit from storage on mount
   useEffect(() => {
-    chrome.storage.local.get([TOKEN_STORAGE_KEY, GROUP_ID_STORAGE_KEY]).then((result) => {
+    chrome.storage.local.get([TOKEN_STORAGE_KEY, GROUP_ID_STORAGE_KEY, 'fb-usage-limit']).then((result) => {
       if (result[TOKEN_STORAGE_KEY]) setToken(result[TOKEN_STORAGE_KEY] as string)
       if (result[GROUP_ID_STORAGE_KEY]) setGroupId(result[GROUP_ID_STORAGE_KEY] as string)
+      if (result['fb-usage-limit'] !== undefined) setUsageLimit(result['fb-usage-limit'] as number)
     })
+    
+    // Lắng nghe thay đổi từ storage để cập nhật limit
+    const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes['fb-usage-limit']) {
+        setUsageLimit(changes['fb-usage-limit'].newValue as number | null)
+      }
+    }
+    chrome.storage.onChanged.addListener(storageListener)
+    return () => chrome.storage.onChanged.removeListener(storageListener)
   }, [])
 
   const handleTokenChange = (value: string) => {
@@ -332,14 +343,19 @@ export default function PostCleanerTool() {
 
         <div className="form-row">
           <div className="form-group">
-            <label htmlFor="sp-maxPosts">Số bài tối đa</label>
+            <label htmlFor="sp-maxPosts">
+              Số bài tối đa {usageLimit !== null && <span className="limit-badge" style={{color: 'green', fontSize: '0.85em', marginLeft: 4}}>(Limit: {usageLimit})</span>}
+            </label>
             <input
               id="sp-maxPosts"
               type="number"
               min={1}
-              max={10000}
+              max={usageLimit !== null ? usageLimit : 10000}
               value={maxPosts}
-              onChange={(e) => setMaxPosts(Math.min(10000, Math.max(1, Number(e.target.value))))}
+              onChange={(e) => {
+                let limitVal = usageLimit !== null ? usageLimit : 10000
+                setMaxPosts(Math.min(limitVal, Math.max(1, Number(e.target.value))))
+              }}
               disabled={running}
               className="form-input"
             />
