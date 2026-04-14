@@ -1,4 +1,4 @@
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'VALIDATE_LICENSE') {
     fetch('https://69d863c9002525524342.sgp.appwrite.run/', {
       method: 'POST',
