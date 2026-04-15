@@ -5,6 +5,7 @@ const TOKEN_STORAGE_KEY = 'fb-graph-api-token'
 const GROUP_ID_STORAGE_KEY = 'fb-group-id'
 
 type Mode = 'feed' | 'pending' | 'spam'
+type SortingSetting = 'CHRONOLOGICAL' | 'RECENT_ACTIVITY' | 'TOP_POSTS'
 
 interface CleanerConfig {
   keywords: string
@@ -34,6 +35,7 @@ export default function PostCleanerTool() {
   const [token, setToken] = useState('')
   const [groupId, setGroupId] = useState('')
   const [groupIdLoading, setGroupIdLoading] = useState(false)
+  const [sortingSetting, setSortingSetting] = useState<SortingSetting>('CHRONOLOGICAL')
   const [usageLimit, setUsageLimit] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const logIdRef = useRef(0)
@@ -228,6 +230,7 @@ export default function PostCleanerTool() {
         config,
         token: token.trim(),
         groupId: groupId.trim(),
+        sortingSetting,
       }, () => {
         if (chrome.runtime.lastError) {
           addLog('Lỗi: ' + chrome.runtime.lastError.message, 'error')
@@ -315,6 +318,38 @@ export default function PostCleanerTool() {
           <span className="form-hint">Nhấn 🔍 để tự động phát hiện từ trang nhóm Facebook hiện tại.</span>
         </div>
       </div>
+
+      {/* Sorting Setting — only for feed mode */}
+      {mode === 'feed' && (
+        <div className="control-card">
+          <div className="form-group">
+            <label>Cách sắp xếp bài viết</label>
+            <div className="radio-group">
+              {([
+                { value: 'CHRONOLOGICAL',   label: '🕐 Theo thứ tự thời gian', desc: 'Mới nhất trước' },
+                { value: 'RECENT_ACTIVITY', label: '🔥 Hoạt động gần đây',     desc: 'Có tương tác gần nhất' },
+                { value: 'TOP_POSTS',       label: '⭐ Bài viết nổi bật',      desc: 'Nhiều tương tác nhất' },
+              ] as { value: SortingSetting; label: string; desc: string }[]).map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`radio-option ${sortingSetting === opt.value ? 'radio-active' : ''} ${running ? 'radio-disabled' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="sortingSetting"
+                    value={opt.value}
+                    checked={sortingSetting === opt.value}
+                    onChange={() => !running && setSortingSetting(opt.value)}
+                    disabled={running}
+                  />
+                  <span className="radio-label">{opt.label}</span>
+                  <span className="radio-desc">{opt.desc}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Settings */}
       <div className="control-card">

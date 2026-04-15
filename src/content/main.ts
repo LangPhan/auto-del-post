@@ -211,20 +211,40 @@ async function likePost(
   }
 }
 
-async function decrementUsageLimit(): Promise<{ success: boolean; newLimit?: number; message?: string }> {
+async function decrementUsageLimit(): Promise<{
+  success: boolean;
+  newLimit?: number;
+  message?: string;
+}> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: "DECREMENT_USAGE" }, (res) => {
-      if (!res) {
-        resolve({ success: false, message: "Không thể kết nối với dịch vụ nền" });
-        return;
-      }
-      if (res.success && res.data) {
-        // Appwrite should return the updated usage limit
-        resolve({ success: true, newLimit: res.data.usageLimit });
-      } else {
-        resolve({ success: false, message: res.error || "Lỗi cập nhật giới hạn" });
-      }
-    });
+    chrome.runtime.sendMessage(
+      { type: "DECREMENT_USAGE" },
+      (res) => {
+        if (!res) {
+          resolve({
+            success: false,
+            message:
+              "Không thể kết nối với dịch vụ nền",
+          });
+          return;
+        }
+        if (res.success && res.data) {
+          // Appwrite should return the updated usage limit
+          resolve({
+            success: true,
+            newLimit:
+              res.data.usageLimit,
+          });
+        } else {
+          resolve({
+            success: false,
+            message:
+              res.error ||
+              "Lỗi cập nhật giới hạn",
+          });
+        }
+      },
+    );
   });
 }
 
@@ -314,13 +334,24 @@ async function apiDeletePost(
           `${errorMsg} ${debugInfo}`.trim(),
       };
     }
-    
+
     // Giảm giới hạn token sau khi xóa thành công
-    const usageRes = await decrementUsageLimit();
+    const usageRes =
+      await decrementUsageLimit();
     if (!usageRes.success) {
-      sendLog("Lỗi cập nhật License: " + usageRes.message, "warning");
-    } else if (usageRes.newLimit !== undefined && usageRes.newLimit <= 0) {
-      sendLog("License Token của bạn đã hết lượt sử dụng (usageLimit = 0). Tiến trình sẽ tự động dừng lại.", "error");
+      sendLog(
+        "Lỗi cập nhật License: " +
+          usageRes.message,
+        "warning",
+      );
+    } else if (
+      usageRes.newLimit !== undefined &&
+      usageRes.newLimit <= 0
+    ) {
+      sendLog(
+        "License Token của bạn đã hết lượt sử dụng (usageLimit = 0). Tiến trình sẽ tự động dừng lại.",
+        "error",
+      );
       if (cleanerAbortController) {
         cleanerAbortController.abort();
       }
@@ -335,7 +366,8 @@ async function apiDeletePost(
     if (
       err instanceof DOMException &&
       err.name === "AbortError"
-    ) throw err;
+    )
+      throw err;
     console.error(
       "API Delete Error:",
       err,
@@ -525,7 +557,8 @@ async function getPendingPosts(
     if (
       err instanceof DOMException &&
       err.name === "AbortError"
-    ) throw err;
+    )
+      throw err;
     console.error(
       "getPendingPosts error:",
       err,
@@ -538,10 +571,16 @@ async function getPendingPosts(
 }
 
 // ─── Post Cleaner Tool ───
+type SortingSetting =
+  | "CHRONOLOGICAL"
+  | "RECENT_ACTIVITY"
+  | "TOP_POSTS";
+
 interface CleanerConfig {
   keywords: string;
   maxPosts: number;
   fromDate: string;
+  sortingSetting?: SortingSetting;
 }
 
 let cleanerAbortController: AbortController | null =
@@ -691,6 +730,7 @@ async function getFeedPostsGraphQL(
   groupId: string,
   count: number = 3,
   cursor: string | null = null,
+  sortingSetting: SortingSetting = "CHRONOLOGICAL",
 ): Promise<{
   success: boolean;
   posts?: FeedPost[];
@@ -727,7 +767,7 @@ async function getFeedPostsGraphQL(
         null,
       renderLocation: "group",
       scale: 1,
-      sortingSetting: "CHRONOLOGICAL",
+      sortingSetting: sortingSetting,
       stream_initial_count: 1,
       useDefaultActor: false,
       id: groupId,
@@ -950,7 +990,8 @@ async function getFeedPostsGraphQL(
     if (
       err instanceof DOMException &&
       err.name === "AbortError"
-    ) throw err;
+    )
+      throw err;
     console.error(
       "getFeedPostsGraphQL error:",
       err,
@@ -967,6 +1008,7 @@ async function runPostCleaner(
   config: CleanerConfig,
   token: string,
   groupId: string,
+  sortingSetting: SortingSetting = "CHRONOLOGICAL",
 ): Promise<void> {
   cleanerAbortController =
     new AbortController();
@@ -1022,6 +1064,7 @@ async function runPostCleaner(
             groupId,
             5,
             cursor,
+            sortingSetting,
           );
         if (!result.success) {
           sendLog(
@@ -1715,7 +1758,8 @@ async function getSpamPosts(
     if (
       err instanceof DOMException &&
       err.name === "AbortError"
-    ) throw err;
+    )
+      throw err;
     console.error(
       "getSpamPosts error:",
       err,
@@ -1824,7 +1868,8 @@ async function apiDeclineSpamPost(
     if (
       err instanceof DOMException &&
       err.name === "AbortError"
-    ) throw err;
+    )
+      throw err;
     console.error(
       "Decline spam error:",
       err,
@@ -2044,6 +2089,8 @@ chrome.runtime.onMessage.addListener(
         message.config as CleanerConfig,
         message.token as string,
         message.groupId as string,
+        (message.sortingSetting as SortingSetting) ??
+          "CHRONOLOGICAL",
       );
     }
 

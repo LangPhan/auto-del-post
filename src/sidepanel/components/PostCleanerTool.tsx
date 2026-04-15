@@ -1,272 +1,543 @@
-import { ensureContentScript } from '@/utils/query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ensureContentScript } from "@/utils/query";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-const TOKEN_STORAGE_KEY = 'fb-graph-api-token'
-const GROUP_ID_STORAGE_KEY = 'fb-group-id'
+const TOKEN_STORAGE_KEY =
+  "fb-graph-api-token";
+const GROUP_ID_STORAGE_KEY =
+  "fb-group-id";
 
-type Mode = 'feed' | 'pending' | 'spam'
+type Mode = "feed" | "pending" | "spam";
+type SortingSetting =
+  | "CHRONOLOGICAL"
+  | "RECENT_ACTIVITY"
+  | "TOP_POSTS";
 
 interface CleanerConfig {
-  keywords: string
-  maxPosts: number
-  fromDate: string
+  keywords: string;
+  maxPosts: number;
+  fromDate: string;
 }
 
 interface LogEntry {
-  id: number
-  text: string
-  type: 'info' | 'success' | 'error' | 'warning'
+  id: number;
+  text: string;
+  type:
+    | "info"
+    | "success"
+    | "error"
+    | "warning";
 }
 
-const MODE_META: Record<Mode, { label: string; emoji: string; desc: string }> = {
-  feed:    { emoji: '📰', label: 'Bảng tin',    desc: 'Xóa các bài viết khớp từ bảng tin của nhóm' },
-  pending: { emoji: '⏳', label: 'Đang chờ', desc: 'Xóa các bài viết khớp từ hàng đợi đang chờ duyệt' },
-  spam:    { emoji: '🚫', label: 'Spam',    desc: 'Xóa các bài viết khớp từ thư mục spam / kiểm duyệt viên' },
-}
+const MODE_META: Record<
+  Mode,
+  {
+    label: string;
+    emoji: string;
+    desc: string;
+  }
+> = {
+  feed: {
+    emoji: "📰",
+    label: "Bảng tin",
+    desc: "Xóa các bài viết khớp từ bảng tin của nhóm",
+  },
+  pending: {
+    emoji: "⏳",
+    label: "Đang chờ",
+    desc: "Xóa các bài viết khớp từ hàng đợi đang chờ duyệt",
+  },
+  spam: {
+    emoji: "🚫",
+    label: "Spam",
+    desc: "Xóa các bài viết khớp từ thư mục spam / kiểm duyệt viên",
+  },
+};
 
 export default function PostCleanerTool() {
-  const [mode, setMode] = useState<Mode>('feed')
-  const [keywords, setKeywords] = useState('')
-  const [maxPosts, setMaxPosts] = useState(5)
-  const [fromDate, setFromDate] = useState('')
-  const [running, setRunning] = useState(false)
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [token, setToken] = useState('')
-  const [groupId, setGroupId] = useState('')
-  const [groupIdLoading, setGroupIdLoading] = useState(false)
-  const [usageLimit, setUsageLimit] = useState<number | null>(null)
-  const logRef = useRef<HTMLDivElement>(null)
-  const logIdRef = useRef(0)
+  const [mode, setMode] =
+    useState<Mode>("feed");
+  const [keywords, setKeywords] =
+    useState("");
+  const [maxPosts, setMaxPosts] =
+    useState(5);
+  const [fromDate, setFromDate] =
+    useState("");
+  const [running, setRunning] =
+    useState(false);
+  const [logs, setLogs] = useState<
+    LogEntry[]
+  >([]);
+  const [token, setToken] =
+    useState("");
+  const [groupId, setGroupId] =
+    useState("");
+  const [
+    groupIdLoading,
+    setGroupIdLoading,
+  ] = useState(false);
+  const [usageLimit, setUsageLimit] =
+    useState<number | null>(null);
+  const [
+    sortingSetting,
+    setSortingSetting,
+  ] = useState<SortingSetting>(
+    "CHRONOLOGICAL",
+  );
+  const logRef =
+    useRef<HTMLDivElement>(null);
+  const logIdRef = useRef(0);
 
-  const addLog = (text: string, type: LogEntry['type'] = 'info') => {
-    const id = ++logIdRef.current
-    setLogs((prev) => [...prev.slice(-100), { id, text, type }])
-  }
+  const addLog = (
+    text: string,
+    type: LogEntry["type"] = "info",
+  ) => {
+    const id = ++logIdRef.current;
+    setLogs((prev) => [
+      ...prev.slice(-100),
+      { id, text, type },
+    ]);
+  };
 
   // Listen for progress messages from content script
   useEffect(() => {
-    const listener = (message: { type: string; text?: string; logType?: string }) => {
-      if (message.type === 'CLEANER_LOG') {
-        addLog(message.text ?? '', (message.logType as LogEntry['type']) ?? 'info')
+    const listener = (message: {
+      type: string;
+      text?: string;
+      logType?: string;
+    }) => {
+      if (
+        message.type === "CLEANER_LOG"
+      ) {
+        addLog(
+          message.text ?? "",
+          (message.logType as LogEntry["type"]) ??
+            "info",
+        );
       }
-      if (message.type === 'CLEANER_DONE') {
-        setRunning(false)
-        addLog(message.text ?? 'Tiến trình đã hoàn tất.', 'success')
+      if (
+        message.type === "CLEANER_DONE"
+      ) {
+        setRunning(false);
+        addLog(
+          message.text ??
+            "Tiến trình đã hoàn tất.",
+          "success",
+        );
       }
-    }
-    chrome.runtime.onMessage.addListener(listener)
-    return () => chrome.runtime.onMessage.removeListener(listener)
-  }, [])
+    };
+    chrome.runtime.onMessage.addListener(
+      listener,
+    );
+    return () =>
+      chrome.runtime.onMessage.removeListener(
+        listener,
+      );
+  }, []);
 
   // Load token, groupId, and usageLimit from storage on mount
   useEffect(() => {
-    chrome.storage.local.get([TOKEN_STORAGE_KEY, GROUP_ID_STORAGE_KEY, 'fb-usage-limit']).then((result) => {
-      if (result[TOKEN_STORAGE_KEY]) setToken(result[TOKEN_STORAGE_KEY] as string)
-      if (result[GROUP_ID_STORAGE_KEY]) setGroupId(result[GROUP_ID_STORAGE_KEY] as string)
-      if (result['fb-usage-limit'] !== undefined) setUsageLimit(result['fb-usage-limit'] as number)
-    })
-    
+    chrome.storage.local
+      .get([
+        TOKEN_STORAGE_KEY,
+        GROUP_ID_STORAGE_KEY,
+        "fb-usage-limit",
+      ])
+      .then((result) => {
+        if (result[TOKEN_STORAGE_KEY])
+          setToken(
+            result[
+              TOKEN_STORAGE_KEY
+            ] as string,
+          );
+        if (
+          result[GROUP_ID_STORAGE_KEY]
+        )
+          setGroupId(
+            result[
+              GROUP_ID_STORAGE_KEY
+            ] as string,
+          );
+        if (
+          result["fb-usage-limit"] !==
+          undefined
+        )
+          setUsageLimit(
+            result[
+              "fb-usage-limit"
+            ] as number,
+          );
+      });
+
     // Lắng nghe thay đổi từ storage để cập nhật limit
-    const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes['fb-usage-limit']) {
-        setUsageLimit(changes['fb-usage-limit'].newValue as number | null)
+    const storageListener = (changes: {
+      [
+        key: string
+      ]: chrome.storage.StorageChange;
+    }) => {
+      if (changes["fb-usage-limit"]) {
+        setUsageLimit(
+          changes["fb-usage-limit"]
+            .newValue as number | null,
+        );
       }
-    }
-    chrome.storage.onChanged.addListener(storageListener)
-    return () => chrome.storage.onChanged.removeListener(storageListener)
-  }, [])
+    };
+    chrome.storage.onChanged.addListener(
+      storageListener,
+    );
+    return () =>
+      chrome.storage.onChanged.removeListener(
+        storageListener,
+      );
+  }, []);
 
-  const handleTokenChange = (value: string) => {
-    setToken(value)
-    chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: value })
-  }
+  const handleTokenChange = (
+    value: string,
+  ) => {
+    setToken(value);
+    chrome.storage.local.set({
+      [TOKEN_STORAGE_KEY]: value,
+    });
+  };
 
-  const handleGroupIdChange = (value: string) => {
-    setGroupId(value)
-    chrome.storage.local.set({ [GROUP_ID_STORAGE_KEY]: value })
-  }
+  const handleGroupIdChange = (
+    value: string,
+  ) => {
+    setGroupId(value);
+    chrome.storage.local.set({
+      [GROUP_ID_STORAGE_KEY]: value,
+    });
+  };
 
   // Auto-detect groupId from current page
-  const detectGroupId = useCallback(async () => {
-    setGroupIdLoading(true)
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (!tab?.id) {
-        addLog('Lỗi: Không tìm thấy tab đang hoạt động.', 'error')
-        setGroupIdLoading(false)
-        return
-      }
-      if (!tab.url?.includes('facebook.com')) {
-        addLog('Lỗi: Vui lòng điều hướng đến trang Facebook trước.', 'error')
-        setGroupIdLoading(false)
-        return
-      }
-
-      const ready = await ensureContentScript(tab.id)
-      if (!ready) {
-        addLog('Lỗi: Không thể tải mã xử lý (content script).', 'error')
-        setGroupIdLoading(false)
-        return
-      }
-
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_GROUP_ID' }, (response) => {
-        setGroupIdLoading(false)
-        if (chrome.runtime.lastError) {
-          addLog('Lỗi khi phát hiện ID Nhóm: ' + chrome.runtime.lastError.message, 'error')
-          return
+  const detectGroupId =
+    useCallback(async () => {
+      setGroupIdLoading(true);
+      try {
+        const [tab] =
+          await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+          });
+        if (!tab?.id) {
+          addLog(
+            "Lỗi: Không tìm thấy tab đang hoạt động.",
+            "error",
+          );
+          setGroupIdLoading(false);
+          return;
         }
-        if (response?.groupId) {
-          setGroupId(response.groupId)
-          chrome.storage.local.set({ [GROUP_ID_STORAGE_KEY]: response.groupId })
-          addLog(`Đã phát hiện ID Nhóm: ${response.groupId}`, 'success')
-        } else {
-          addLog('Không thể phát hiện ID Nhóm từ trang này.', 'warning')
+        if (
+          !tab.url?.includes(
+            "facebook.com",
+          )
+        ) {
+          addLog(
+            "Lỗi: Vui lòng điều hướng đến trang Facebook trước.",
+            "error",
+          );
+          setGroupIdLoading(false);
+          return;
         }
-      })
-    } catch (err) {
-      addLog(`Lỗi khi phát hiện ID Nhóm: ${err}`, 'error')
-      setGroupIdLoading(false)
-    }
-  }, [])
+
+        const ready =
+          await ensureContentScript(
+            tab.id,
+          );
+        if (!ready) {
+          addLog(
+            "Lỗi: Không thể tải mã xử lý (content script).",
+            "error",
+          );
+          setGroupIdLoading(false);
+          return;
+        }
+
+        chrome.tabs.sendMessage(
+          tab.id,
+          { type: "GET_GROUP_ID" },
+          (response) => {
+            setGroupIdLoading(false);
+            if (
+              chrome.runtime.lastError
+            ) {
+              addLog(
+                "Lỗi khi phát hiện ID Nhóm: " +
+                  chrome.runtime
+                    .lastError.message,
+                "error",
+              );
+              return;
+            }
+            if (response?.groupId) {
+              setGroupId(
+                response.groupId,
+              );
+              chrome.storage.local.set({
+                [GROUP_ID_STORAGE_KEY]:
+                  response.groupId,
+              });
+              addLog(
+                `Đã phát hiện ID Nhóm: ${response.groupId}`,
+                "success",
+              );
+            } else {
+              addLog(
+                "Không thể phát hiện ID Nhóm từ trang này.",
+                "warning",
+              );
+            }
+          },
+        );
+      } catch (err) {
+        addLog(
+          `Lỗi khi phát hiện ID Nhóm: ${err}`,
+          "error",
+        );
+        setGroupIdLoading(false);
+      }
+    }, []);
 
   // Auto-scroll log
   useEffect(() => {
     if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight
+      logRef.current.scrollTop =
+        logRef.current.scrollHeight;
     }
-  }, [logs])
+  }, [logs]);
 
-  const handleModeChange = (newMode: Mode) => {
-    if (running) return
-    setMode(newMode)
-    setLogs([])
-    logIdRef.current = 0
-  }
+  const handleModeChange = (
+    newMode: Mode,
+  ) => {
+    if (running) return;
+    setMode(newMode);
+    setLogs([]);
+    logIdRef.current = 0;
+  };
 
   const handleStart = async () => {
-    if (running) return
+    if (running) return;
 
     if (!groupId.trim()) {
-      addLog('Lỗi: Vui lòng nhập hoặc tự động phát hiện ID Nhóm trước.', 'error')
-      return
+      addLog(
+        "Lỗi: Vui lòng nhập hoặc tự động phát hiện ID Nhóm trước.",
+        "error",
+      );
+      return;
     }
 
-    setRunning(true)
-    setLogs([])
+    setRunning(true);
+    setLogs([]);
 
     // Validate License Token trước khi chạy
-    addLog('Đang kiểm tra License Token...', 'info')
-    const storageRes = await chrome.storage.local.get(['fb-app-token', 'fb-device-id'])
-    const appToken = storageRes['fb-app-token']
-    const deviceId = storageRes['fb-device-id']
+    addLog(
+      "Đang kiểm tra License Token...",
+      "info",
+    );
+    const storageRes =
+      await chrome.storage.local.get([
+        "fb-app-token",
+        "fb-device-id",
+      ]);
+    const appToken =
+      storageRes["fb-app-token"];
+    const deviceId =
+      storageRes["fb-device-id"];
 
     if (!appToken) {
-      addLog('Lỗi: Bạn chưa thiết lập License Token. Vui lòng sang tab Cài đặt.', 'error')
-      setRunning(false)
-      return
+      addLog(
+        "Lỗi: Bạn chưa thiết lập License Token. Vui lòng sang tab Cài đặt.",
+        "error",
+      );
+      setRunning(false);
+      return;
     }
 
-      // Gọi background script để validate token 
-      const validateRes = await new Promise<any>((resolve) => {
-        chrome.runtime.sendMessage(
-          { type: 'VALIDATE_LICENSE', token: appToken, deviceId },
-          (res) => resolve(res)
-        )
-      })
+    // Gọi background script để validate token
+    const validateRes =
+      await new Promise<any>(
+        (resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              type: "VALIDATE_LICENSE",
+              token: appToken,
+              deviceId,
+            },
+            (res) => resolve(res),
+          );
+        },
+      );
 
-      if (!validateRes || !validateRes.success || !validateRes.data?.valid) {
-        addLog('Lỗi: License Token không hợp lệ, đã hết hạn hoặc hết lượt.', 'error')
-        setRunning(false)
-        return
-      }
+    if (
+      !validateRes ||
+      !validateRes.success ||
+      !validateRes.data?.valid
+    ) {
+      addLog(
+        "Lỗi: License Token không hợp lệ, đã hết hạn hoặc hết lượt.",
+        "error",
+      );
+      setRunning(false);
+      return;
+    }
 
-      if (validateRes.data.usageLimit <= 0) {
-        addLog('Lỗi: License Token của bạn đã hết lượt dọn dẹp (usageLimit = 0).', 'error')
-        setRunning(false)
-        return
-      }
+    if (
+      validateRes.data.usageLimit <= 0
+    ) {
+      addLog(
+        "Lỗi: License Token của bạn đã hết lượt dọn dẹp (usageLimit = 0).",
+        "error",
+      );
+      setRunning(false);
+      return;
+    }
 
-      addLog(`Token xác thực thành công. Lượt còn lại: ${validateRes.data.usageLimit}`, 'success')
-      
-      const config: CleanerConfig = {
-        keywords: keywords.trim(),
-        maxPosts,
-        fromDate,
-      }
+    addLog(
+      `Token xác thực thành công. Lượt còn lại: ${validateRes.data.usageLimit}`,
+      "success",
+    );
 
-      addLog(`Đang bắt đầu dọn dẹp ${MODE_META[mode].label}...`, 'info')
+    const config: CleanerConfig = {
+      keywords: keywords.trim(),
+      maxPosts,
+      fromDate,
+    };
+
+    addLog(
+      `Đang bắt đầu dọn dẹp ${MODE_META[mode].label}...`,
+      "info",
+    );
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const [tab] =
+        await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
 
       if (!tab?.id) {
-        addLog('Lỗi: Không tìm thấy tab đang hoạt động.', 'error')
-        setRunning(false)
-        return
+        addLog(
+          "Lỗi: Không tìm thấy tab đang hoạt động.",
+          "error",
+        );
+        setRunning(false);
+        return;
       }
-      if (!tab.url?.includes('facebook.com')) {
-        addLog('Lỗi: Vui lòng điều hướng đến trang nhóm Facebook trước.', 'error')
-        setRunning(false)
-        return
+      if (
+        !tab.url?.includes(
+          "facebook.com",
+        )
+      ) {
+        addLog(
+          "Lỗi: Vui lòng điều hướng đến trang nhóm Facebook trước.",
+          "error",
+        );
+        setRunning(false);
+        return;
       }
 
-      const ready = await ensureContentScript(tab.id)
+      const ready =
+        await ensureContentScript(
+          tab.id,
+        );
       if (!ready) {
-        addLog('Lỗi: Không thể tải mã xử lý. Hãy thử tải lại trang Facebook.', 'error')
-        setRunning(false)
-        return
+        addLog(
+          "Lỗi: Không thể tải mã xử lý. Hãy thử tải lại trang Facebook.",
+          "error",
+        );
+        setRunning(false);
+        return;
       }
 
       const messageType =
-        mode === 'feed'    ? 'START_POST_CLEANER' :
-        mode === 'pending' ? 'START_PENDING_CLEANER' :
-                             'START_SPAM_CLEANER'
+        mode === "feed"
+          ? "START_POST_CLEANER"
+          : mode === "pending"
+            ? "START_PENDING_CLEANER"
+            : "START_SPAM_CLEANER";
 
-      chrome.tabs.sendMessage(tab.id, {
-        type: messageType,
-        config,
-        token: token.trim(),
-        groupId: groupId.trim(),
-      }, () => {
-        if (chrome.runtime.lastError) {
-          addLog('Lỗi: ' + chrome.runtime.lastError.message, 'error')
-          setRunning(false)
-        }
-      })
+      chrome.tabs.sendMessage(
+        tab.id,
+        {
+          type: messageType,
+          config,
+          token: token.trim(),
+          groupId: groupId.trim(),
+          sortingSetting,
+        },
+        () => {
+          if (
+            chrome.runtime.lastError
+          ) {
+            addLog(
+              "Lỗi: " +
+                chrome.runtime.lastError
+                  .message,
+              "error",
+            );
+            setRunning(false);
+          }
+        },
+      );
     } catch (err) {
-      addLog(`Lỗi: ${err}`, 'error')
-      setRunning(false)
+      addLog(`Lỗi: ${err}`, "error");
+      setRunning(false);
     }
-  }
+  };
 
   const handleStop = () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_POST_CLEANER' })
-      }
-    })
-    setRunning(false)
-    addLog('Đã dừng bởi người dùng.', 'warning')
-  }
+    chrome.tabs.query(
+      {
+        active: true,
+        currentWindow: true,
+      },
+      (tabs) => {
+        if (tabs[0]?.id) {
+          chrome.tabs.sendMessage(
+            tabs[0].id,
+            {
+              type: "STOP_POST_CLEANER",
+            },
+          );
+        }
+      },
+    );
+    setRunning(false);
+    addLog(
+      "Đã dừng bởi người dùng.",
+      "warning",
+    );
+  };
 
   const handleClearLogs = () => {
-    setLogs([])
-    logIdRef.current = 0
-  }
+    setLogs([]);
+    logIdRef.current = 0;
+  };
 
   return (
     <div className="tool-panel">
       {/* Mode Selector */}
       <div className="mode-selector">
-        {(Object.keys(MODE_META) as Mode[]).map((m) => (
+        {(
+          Object.keys(
+            MODE_META,
+          ) as Mode[]
+        ).map((m) => (
           <button
             key={m}
-            className={`mode-btn ${mode === m ? 'mode-active' : ''} mode-${m}`}
-            onClick={() => handleModeChange(m)}
+            className={`mode-btn ${mode === m ? "mode-active" : ""} mode-${m}`}
+            onClick={() =>
+              handleModeChange(m)
+            }
             disabled={running}
             title={MODE_META[m].desc}
           >
-            {MODE_META[m].emoji} {MODE_META[m].label}
+            {MODE_META[m].emoji}{" "}
+            {MODE_META[m].label}
           </button>
         ))}
       </div>
@@ -274,99 +545,246 @@ export default function PostCleanerTool() {
       {/* Settings Card */}
       <div className="control-card">
         <div className="card-section-title">
-          <span className="section-icon">⚙️</span>
+          <span className="section-icon">
+            ⚙️
+          </span>
           Cấu hình kết nối
         </div>
 
         {/* Token — only for feed mode */}
-        {mode === 'feed' && (
+        {mode === "feed" && (
           <div className="form-group">
-            <label htmlFor="sp-accessToken">Mã truy cập (Access Token)</label>
+            <label htmlFor="sp-accessToken">
+              Mã truy cập (Access Token)
+            </label>
             <input
               id="sp-accessToken"
               type="password"
               placeholder="Dán mã token Facebook Graph API của bạn..."
               value={token}
-              onChange={(e) => handleTokenChange(e.target.value)}
+              onChange={(e) =>
+                handleTokenChange(
+                  e.target.value,
+                )
+              }
               disabled={running}
               className="form-input"
             />
-            <span className="form-hint">Không bắt buộc. Nếu để trống, sẽ sử dụng GraphQL dựa trên cookie (không cần token).</span>
+            <span className="form-hint">
+              Không bắt buộc. Nếu để
+              trống, sẽ sử dụng GraphQL
+              dựa trên cookie (không cần
+              token).
+            </span>
           </div>
         )}
 
         <div className="form-group">
-          <label htmlFor="sp-groupId">ID Nhóm</label>
+          <label htmlFor="sp-groupId">
+            ID Nhóm
+          </label>
           <div className="input-with-btn">
             <input
               id="sp-groupId"
               type="text"
               placeholder="ví dụ: 1441796987660953"
               value={groupId}
-              onChange={(e) => handleGroupIdChange(e.target.value)}
+              onChange={(e) =>
+                handleGroupIdChange(
+                  e.target.value,
+                )
+              }
               disabled={running}
               className="form-input"
             />
             <button
               className="detect-btn"
               onClick={detectGroupId}
-              disabled={running || groupIdLoading}
+              disabled={
+                running ||
+                groupIdLoading
+              }
               title="Tự động phát hiện từ trang hiện tại"
             >
-              {groupIdLoading ? '⏳' : '🔍'}
+              {groupIdLoading
+                ? "⏳"
+                : "🔍"}
             </button>
           </div>
-          <span className="form-hint">Nhấn 🔍 để tự động phát hiện từ trang nhóm Facebook hiện tại.</span>
+          <span className="form-hint">
+            Nhấn 🔍 để tự động phát hiện
+            từ trang nhóm Facebook hiện
+            tại.
+          </span>
         </div>
       </div>
+
+      {/* Sorting Setting — only for feed mode */}
+      {mode === "feed" && (
+        <div className="control-card">
+          <div className="card-section-title">
+            <span className="section-icon">
+              🔄
+            </span>
+            Cách sắp xếp bài viết
+          </div>
+          <div className="form-group">
+            <div className="radio-group">
+              {(
+                [
+                  {
+                    value:
+                      "CHRONOLOGICAL",
+                    label:
+                      "🕐 Theo thứ tự thời gian",
+                    desc: "Mới nhất trước",
+                  },
+                  {
+                    value:
+                      "RECENT_ACTIVITY",
+                    label:
+                      "🔥 Hoạt động gần đây",
+                    desc: "Có tương tác gần nhất",
+                  },
+                  {
+                    value: "TOP_POSTS",
+                    label:
+                      "⭐ Bài viết nổi bật",
+                    desc: "Nhiều tương tác nhất",
+                  },
+                ] as {
+                  value: SortingSetting;
+                  label: string;
+                  desc: string;
+                }[]
+              ).map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`radio-option ${sortingSetting === opt.value ? "radio-active" : ""} ${running ? "radio-disabled" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="sp-sortingSetting"
+                    value={opt.value}
+                    checked={
+                      sortingSetting ===
+                      opt.value
+                    }
+                    onChange={() =>
+                      !running &&
+                      setSortingSetting(
+                        opt.value,
+                      )
+                    }
+                    disabled={running}
+                  />
+                  <span className="radio-label">
+                    {opt.label}
+                  </span>
+                  <span className="radio-desc">
+                    {opt.desc}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Settings */}
       <div className="control-card">
         <div className="card-section-title">
-          <span className="section-icon">🔍</span>
+          <span className="section-icon">
+            🔍
+          </span>
           Bộ lọc bài viết
         </div>
 
         <div className="form-group">
-          <label htmlFor="sp-keywords">Từ khóa</label>
+          <label htmlFor="sp-keywords">
+            Từ khóa
+          </label>
           <input
             id="sp-keywords"
             type="text"
             placeholder="rác, bán hàng, quảng cáo..."
             value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
+            onChange={(e) =>
+              setKeywords(
+                e.target.value,
+              )
+            }
             disabled={running}
             className="form-input"
           />
-          <span className="form-hint">Cách nhau bằng dấu phẩy. Bài viết khớp với BẤT KỲ từ khóa nào sẽ bị xóa.</span>
+          <span className="form-hint">
+            Cách nhau bằng dấu phẩy. Bài
+            viết khớp với BẤT KỲ từ khóa
+            nào sẽ bị xóa.
+          </span>
         </div>
 
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="sp-maxPosts">
-              Số bài tối đa {usageLimit !== null && <span className="limit-badge" style={{color: 'green', fontSize: '0.85em', marginLeft: 4}}>(Limit: {usageLimit})</span>}
+              Số bài tối đa{" "}
+              {usageLimit !== null && (
+                <span
+                  className="limit-badge"
+                  style={{
+                    color: "green",
+                    fontSize: "0.85em",
+                    marginLeft: 4,
+                  }}
+                >
+                  (Limit: {usageLimit})
+                </span>
+              )}
             </label>
             <input
               id="sp-maxPosts"
               type="number"
               min={1}
-              max={usageLimit !== null ? usageLimit : 10000}
+              max={
+                usageLimit !== null
+                  ? usageLimit
+                  : 10000
+              }
               value={maxPosts}
               onChange={(e) => {
-                let limitVal = usageLimit !== null ? usageLimit : 10000
-                setMaxPosts(Math.min(limitVal, Math.max(1, Number(e.target.value))))
+                let limitVal =
+                  usageLimit !== null
+                    ? usageLimit
+                    : 10000;
+                setMaxPosts(
+                  Math.min(
+                    limitVal,
+                    Math.max(
+                      1,
+                      Number(
+                        e.target.value,
+                      ),
+                    ),
+                  ),
+                );
               }}
               disabled={running}
               className="form-input"
             />
           </div>
           <div className="form-group">
-            <label htmlFor="sp-fromDate">Từ ngày</label>
+            <label htmlFor="sp-fromDate">
+              Từ ngày
+            </label>
             <input
               id="sp-fromDate"
               type="date"
               value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              onChange={(e) =>
+                setFromDate(
+                  e.target.value,
+                )
+              }
               disabled={running}
               className="form-input"
             />
@@ -379,10 +797,14 @@ export default function PostCleanerTool() {
               className="start-btn"
               onClick={handleStart}
             >
-              ▶ Bắt đầu dọn dẹp {MODE_META[mode].label}
+              ▶ Bắt đầu dọn dẹp{" "}
+              {MODE_META[mode].label}
             </button>
           ) : (
-            <button className="stop-btn" onClick={handleStop}>
+            <button
+              className="stop-btn"
+              onClick={handleStop}
+            >
               ■ Dừng
             </button>
           )}
@@ -392,17 +814,33 @@ export default function PostCleanerTool() {
       {/* Progress Log */}
       <div className="log-card">
         <div className="log-header">
-          <span className="log-title">📋 Nhật ký tiến trình</span>
-          <button className="log-clear" onClick={handleClearLogs} disabled={running}>
+          <span className="log-title">
+            📋 Nhật ký tiến trình
+          </span>
+          <button
+            className="log-clear"
+            onClick={handleClearLogs}
+            disabled={running}
+          >
             Xóa nhật ký
           </button>
         </div>
-        <div className="log-body" ref={logRef}>
+        <div
+          className="log-body"
+          ref={logRef}
+        >
           {logs.length === 0 ? (
-            <p className="log-empty">Chưa có hoạt động nào. Chọn một chế độ và nhấn Bắt đầu.</p>
+            <p className="log-empty">
+              Chưa có hoạt động nào.
+              Chọn một chế độ và nhấn
+              Bắt đầu.
+            </p>
           ) : (
             logs.map((entry) => (
-              <div key={entry.id} className={`log-entry log-${entry.type}`}>
+              <div
+                key={entry.id}
+                className={`log-entry log-${entry.type}`}
+              >
                 {entry.text}
               </div>
             ))
@@ -410,5 +848,5 @@ export default function PostCleanerTool() {
         </div>
       </div>
     </div>
-  )
+  );
 }

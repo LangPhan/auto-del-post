@@ -521,3 +521,60 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* ── Sorting Radio Group ── */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.radio-option:hover:not(.radio-disabled) {
+  border-color: var(--accent);
+  background: rgba(108, 99, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(108, 99, 255, 0.08);
+}
+
+.radio-option.radio-active {
+  border-color: var(--accent);
+  background: rgba(108, 99, 255, 0.12);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.radio-option.radio-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.radio-option input[type="radio"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.radio-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.radio-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}

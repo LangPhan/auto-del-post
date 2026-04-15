@@ -491,3 +491,59 @@
     transform: translateY(0);
   }
 }
+
+/* ── Sorting Radio Group ── */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.radio-option:hover:not(.radio-disabled) {
+  border-color: var(--accent);
+  background: rgba(108, 99, 255, 0.08);
+}
+
+.radio-option.radio-active {
+  border-color: var(--accent);
+  background: rgba(108, 99, 255, 0.12);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.radio-option.radio-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.radio-option input[type="radio"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.radio-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.radio-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
