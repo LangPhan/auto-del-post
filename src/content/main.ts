@@ -2036,6 +2036,724 @@ async function runSpamCleaner(
   }
 }
 
+// ─── Page Posts via GraphQL (cookie-based) ───
+async function getPagePostsGraphQL(
+  pageId: string,
+  count: number = 3,
+  cursor: string | null = null,
+): Promise<{
+  success: boolean;
+  posts?: FeedPost[];
+  cursor?: string | null;
+  hasNextPage?: boolean;
+  message?: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+
+  if (!fb_dtsg) {
+    return {
+      success: false,
+      message:
+        "Thiếu token (fb_dtsg)",
+    };
+  }
+
+  // Use pageId as av/__user — Facebook requires the page identity, not c_user
+  const av = pageId;
+
+  try {
+    const variables: Record<
+      string,
+      any
+    > = {
+      afterTime: null,
+      beforeTime: null,
+      count,
+      cursor: cursor ?? null,
+      feedLocation: "TIMELINE",
+      feedbackSource: 0,
+      focusCommentID: null,
+      memorializedSplitTimeFilter: null,
+      omitPinnedPost: true,
+      postedBy: { group: "OWNER" },
+      privacy: null,
+      privacySelectorRenderLocation:
+        "COMET_STREAM",
+      referringStoryRenderLocation:
+        null,
+      renderLocation: "timeline",
+      scale: 1,
+      stream_count: 1,
+      taggedInOnly: null,
+      trackingCode: null,
+      useDefaultActor: false,
+      id: pageId,
+      __relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider: true,
+      __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+      __relay_internal__pv__CometFeedStory_enable_post_permalink_white_space_clickrelayprovider: false,
+      __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: false,
+      __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+      __relay_internal__pv__IsWorkUserrelayprovider: false,
+      __relay_internal__pv__TestPilotShouldIncludeDemoAdUseCaserelayprovider: false,
+      __relay_internal__pv__FBReels_deprecate_short_form_video_context_gkrelayprovider: true,
+      __relay_internal__pv__FBReels_enable_view_dubbed_audio_type_gkrelayprovider: true,
+      __relay_internal__pv__CometImmersivePhotoCanUserDisable3DMotionrelayprovider: false,
+      __relay_internal__pv__WorkCometIsEmployeeGKProviderrelayprovider: false,
+      __relay_internal__pv__IsMergQAPollsrelayprovider: false,
+      __relay_internal__pv__FBReelsMediaFooter_comet_enable_reels_ads_gkrelayprovider: true,
+      __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+      __relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider:
+        "ORIGINAL",
+      __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+      __relay_internal__pv__CometUFISingleLineUFIrelayprovider: true,
+      __relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider: true,
+      __relay_internal__pv__FBReelsIFUTileContent_reelsIFUPlayOnHoverrelayprovider: true,
+      __relay_internal__pv__GroupsCometGYSJFeedItemHeightrelayprovider: 206,
+      __relay_internal__pv__ShouldEnableBakedInTextStoriesrelayprovider: false,
+      __relay_internal__pv__StoriesShouldIncludeFbNotesrelayprovider: true,
+    };
+
+    const signal = getCleanerSignal();
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        signal,
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+          "x-fb-friendly-name":
+            "ProfileCometTimelineFeedRefetchQuery",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "ProfileCometTimelineFeedRefetchQuery",
+          server_timestamps: "true",
+          variables:
+            JSON.stringify(variables),
+          doc_id: "26108883358794426",
+        }),
+      },
+    );
+
+    const text = await res.text();
+
+    // Facebook returns streaming relay responses (NDJSON)
+    const jsonChunks =
+      splitTopLevelJsonObjects(text);
+    const allNodes: any[] = [];
+    let lastCursor: string | null =
+      null;
+
+    console.log(
+      "[getPagePostsGraphQL] found",
+      jsonChunks.length,
+      "JSON chunks",
+    );
+
+    for (const chunk of jsonChunks) {
+      try {
+        const json = JSON.parse(chunk);
+
+        // Check for errors
+        if (
+          json?.errors &&
+          !json?.data
+        ) {
+          const errMsg =
+            json.errors[0]?.message ||
+            "Lỗi GraphQL";
+          console.error(
+            "[getPagePostsGraphQL] errors:",
+            json.errors,
+          );
+          return {
+            success: false,
+            message: errMsg,
+          };
+        }
+
+        // Base response: data.node.timeline_list_feed_units.edges[]
+        const baseEdges =
+          json?.data?.node
+            ?.timeline_list_feed_units
+            ?.edges;
+        if (
+          baseEdges &&
+          Array.isArray(baseEdges)
+        ) {
+          for (const edge of baseEdges) {
+            if (edge.node) {
+              allNodes.push({
+                node: edge.node,
+                cursor: edge.cursor,
+              });
+            }
+          }
+        }
+
+        // Streamed chunks: path: ["node","timeline_list_feed_units","edges", N]
+        if (
+          json?.data?.node &&
+          json?.path
+        ) {
+          const path = json.path;
+          if (
+            Array.isArray(path) &&
+            path[0] === "node" &&
+            path[1] ===
+              "timeline_list_feed_units" &&
+            path[2] === "edges" &&
+            path.length === 4
+          ) {
+            allNodes.push({
+              node: json.data.node,
+              cursor: json.data.cursor,
+            });
+          }
+        }
+      } catch (_) {
+        // Skip unparseable chunks
+      }
+    }
+
+    console.log(
+      "[getPagePostsGraphQL] parsed nodes:",
+      allNodes.length,
+    );
+
+    // Filter out non-Story nodes
+    const storyEdges = allNodes.filter(
+      (e) =>
+        e.node?.__typename === "Story",
+    );
+
+    const posts: FeedPost[] =
+      storyEdges.map((e: any) => {
+        const node = e.node || {};
+        // Get message text from nested comet_sections
+        const storyContent =
+          node.comet_sections?.content
+            ?.story;
+        const messageText =
+          storyContent?.message?.text ??
+          storyContent?.comet_sections
+            ?.message?.story?.message
+            ?.text ??
+          node.message?.text ??
+          "";
+
+        // Get author info
+        const actors =
+          storyContent?.actors ||
+          node.actors ||
+          [];
+        const actor = actors[0] || {};
+
+        // Get creation_time from timestamp metadata
+        const metadataArr =
+          node.comet_sections
+            ?.context_layout?.story
+            ?.comet_sections
+            ?.metadata || [];
+        let creationTime = 0;
+        for (const meta of metadataArr) {
+          if (
+            meta?.story?.creation_time
+          ) {
+            creationTime =
+              meta.story.creation_time;
+            break;
+          }
+        }
+
+        // Track last cursor for pagination
+        if (e.cursor)
+          lastCursor = e.cursor;
+
+        return {
+          id: node.id || "",
+          post_id:
+            node.post_id ||
+            storyContent?.post_id ||
+            "",
+          message: messageText,
+          created_time: creationTime
+            ? new Date(
+                creationTime * 1000,
+              ).toISOString()
+            : "",
+          author_name: actor.name || "",
+          author_id: actor.id || "",
+        };
+      });
+
+    return {
+      success: true,
+      posts,
+      cursor: lastCursor,
+      hasNextPage:
+        storyEdges.length >= count,
+    };
+  } catch (err) {
+    if (
+      err instanceof DOMException &&
+      err.name === "AbortError"
+    )
+      throw err;
+    console.error(
+      "getPagePostsGraphQL error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
+  }
+}
+
+// ─── Trash/Delete Page Post ───
+async function apiTrashPost(
+  storyId: string,
+  pageId: string,
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const fb_dtsg = getFBDTSG();
+
+  if (!fb_dtsg) {
+    return {
+      success: false,
+      message:
+        "Thiếu token (fb_dtsg)",
+    };
+  }
+
+  // Use pageId as av/__user — Facebook requires the page identity
+  const av = pageId;
+
+  console.log(
+    "API Deleting page post storyId:",
+    storyId,
+    "with actor:",
+    av,
+  );
+
+  try {
+    const signal = getCleanerSignal();
+
+    // Try the proven delete mutation first (same as group delete but with TIMELINE location)
+    const res = await fetch(
+      "https://www.facebook.com/api/graphql/",
+      {
+        method: "POST",
+        credentials: "include",
+        signal,
+        headers: {
+          "content-type":
+            "application/x-www-form-urlencoded",
+          "x-fb-friendly-name":
+            "useCometFeedStoryDeleteMutation",
+        },
+        body: new URLSearchParams({
+          av: av,
+          __user: av,
+          __a: "1",
+          fb_dtsg: fb_dtsg,
+          fb_api_caller_class:
+            "RelayModern",
+          fb_api_req_friendly_name:
+            "useCometFeedStoryDeleteMutation",
+          variables: JSON.stringify({
+            input: {
+              story_id: storyId,
+              story_location: "TIMELINE",
+              actor_id: av,
+              client_mutation_id:
+                Math.floor(
+                  Math.random() * 1000,
+                ).toString(),
+            },
+            groupID: null,
+            inviteShortLinkKey: null,
+            renderLocation: null,
+            scale: 1,
+            __relay_internal__pv__groups_comet_use_glvrelayprovider: false,
+          }),
+          doc_id: "33779779394969988",
+        }),
+      },
+    );
+
+    const text = await res.text();
+    console.log(
+      "Delete page post response:",
+      text.slice(0, 500),
+    );
+
+    // Check for errors — if delete mutation fails, try trash mutation as fallback
+    if (text.includes('"errors"')) {
+      console.log(
+        "Delete mutation failed, trying trash mutation as fallback...",
+      );
+
+      // Fallback: try useCometTrashPostMutation
+      const trashRes = await fetch(
+        "https://www.facebook.com/api/graphql/",
+        {
+          method: "POST",
+          credentials: "include",
+          signal,
+          headers: {
+            "content-type":
+              "application/x-www-form-urlencoded",
+            "x-fb-friendly-name":
+              "useCometTrashPostMutation",
+          },
+          body: new URLSearchParams({
+            av: av,
+            __user: av,
+            __a: "1",
+            fb_dtsg: fb_dtsg,
+            fb_api_caller_class:
+              "RelayModern",
+            fb_api_req_friendly_name:
+              "useCometTrashPostMutation",
+            server_timestamps: "true",
+            variables: JSON.stringify({
+              input: {
+                story_id: storyId,
+                story_location:
+                  "TIMELINE",
+                actor_id: av,
+                client_mutation_id:
+                  Math.floor(
+                    Math.random() *
+                      1000,
+                  ).toString(),
+              },
+            }),
+            doc_id: "26146132388368957",
+          }),
+        },
+      );
+
+      const trashText =
+        await trashRes.text();
+      console.log(
+        "Trash fallback response:",
+        trashText.slice(0, 500),
+      );
+
+      if (
+        trashText.includes('"errors"')
+      ) {
+        const parsed =
+          JSON.parse(trashText);
+        const errorMsg =
+          parsed.errors?.[0]?.message ||
+          "Lỗi GraphQL không xác định";
+        return {
+          success: false,
+          message: errorMsg,
+        };
+      }
+
+      // Check trash success
+      const trashParsed = JSON.parse(
+        trashText.split("\n")[0],
+      );
+      if (
+        trashParsed?.data
+          ?.move_to_trash_story?.success
+      ) {
+        const usageRes =
+          await decrementUsageLimit();
+        if (!usageRes.success) {
+          sendLog(
+            "Lỗi cập nhật License: " +
+              usageRes.message,
+            "warning",
+          );
+        } else if (
+          usageRes.newLimit !==
+            undefined &&
+          usageRes.newLimit <= 0
+        ) {
+          sendLog(
+            "License Token đã hết lượt. Tiến trình sẽ dừng.",
+            "error",
+          );
+          if (cleanerAbortController) {
+            cleanerAbortController.abort();
+          }
+        }
+        return {
+          success: true,
+          message:
+            "Đã chuyển bài viết vào thùng rác",
+        };
+      }
+
+      return {
+        success: true,
+        message:
+          "Đã gửi yêu cầu xóa bài viết",
+      };
+    }
+
+    // Delete mutation succeeded
+    // Giảm giới hạn token sau khi xóa thành công
+    const usageRes =
+      await decrementUsageLimit();
+    if (!usageRes.success) {
+      sendLog(
+        "Lỗi cập nhật License: " +
+          usageRes.message,
+        "warning",
+      );
+    } else if (
+      usageRes.newLimit !== undefined &&
+      usageRes.newLimit <= 0
+    ) {
+      sendLog(
+        "License Token đã hết lượt. Tiến trình sẽ dừng.",
+        "error",
+      );
+      if (cleanerAbortController) {
+        cleanerAbortController.abort();
+      }
+    }
+
+    return {
+      success: true,
+      message:
+        "Xóa bài viết thành công",
+    };
+  } catch (err) {
+    if (
+      err instanceof DOMException &&
+      err.name === "AbortError"
+    )
+      throw err;
+    console.error(
+      "API Delete Page Post Error:",
+      err,
+    );
+    return {
+      success: false,
+      message: String(err),
+    };
+  }
+}
+
+// ─── Page Cleaner ───
+async function runPageCleaner(
+  config: CleanerConfig,
+  pageId: string,
+): Promise<void> {
+  cleanerAbortController =
+    new AbortController();
+  const signal =
+    cleanerAbortController.signal;
+
+  const keywords = config.keywords
+    ? config.keywords
+        .split(",")
+        .map((k) =>
+          k.trim().toLowerCase(),
+        )
+        .filter(Boolean)
+    : [];
+  const fromDate = config.fromDate
+    ? new Date(config.fromDate)
+    : null;
+
+  sendLog(
+    `[Page] Bộ lọc: ${keywords.length > 0 ? `từ khóa=[${keywords.join(", ")}]` : "không lọc từ khóa"}, tối đa=${config.maxPosts}${fromDate ? `, từ ngày=${config.fromDate}` : ""}`,
+  );
+  sendLog(`[Page] ID Page: ${pageId}`);
+
+  let deletedCount = 0;
+  let scannedCount = 0;
+  let fetchAttempts = 0;
+  const processedPosts =
+    new Set<string>();
+
+  try {
+    let cursor: string | null = null;
+
+    while (
+      deletedCount < config.maxPosts
+    ) {
+      checkAbort(signal);
+
+      fetchAttempts++;
+      sendLog(
+        `Đang lấy bài viết Page qua GraphQL (trang ${fetchAttempts})...`,
+      );
+
+      const result =
+        await getPagePostsGraphQL(
+          pageId,
+          5,
+          cursor,
+        );
+      if (!result.success) {
+        sendLog(
+          `Lỗi lấy dữ liệu bài viết Page: ${result.message}`,
+          "error",
+        );
+        sendDone("Thất bại.");
+        return;
+      }
+
+      const posts =
+        result.posts ?? [];
+      if (posts.length === 0) {
+        sendLog(
+          "Không tìm thấy thêm bài viết nào.",
+          "warning",
+        );
+        break;
+      }
+
+      // Check for new posts
+      const newPosts = posts.filter(
+        (p) =>
+          !processedPosts.has(
+            p.post_id,
+          ),
+      );
+      if (newPosts.length === 0) {
+        sendLog(
+          "Tất cả bài viết trả về đều đã được xử lý.",
+          "warning",
+        );
+        break;
+      }
+
+      sendLog(
+        `Đã lấy được ${posts.length} bài viết.`,
+      );
+
+      for (const post of posts) {
+        checkAbort(signal);
+        if (
+          deletedCount >=
+          config.maxPosts
+        )
+          break;
+        if (
+          processedPosts.has(
+            post.post_id,
+          )
+        )
+          continue;
+
+        processedPosts.add(
+          post.post_id,
+        );
+        scannedCount++;
+
+        const postText = (
+          post.message || ""
+        ).toLowerCase();
+
+        // Keyword filter
+        if (
+          !matchesKeywords(
+            postText,
+            keywords,
+          )
+        )
+          continue;
+
+        // Date filter
+        if (
+          fromDate &&
+          post.created_time
+        ) {
+          const postDate = new Date(
+            post.created_time,
+          );
+          if (postDate < fromDate) {
+            sendLog(
+              `Bài viết ${scannedCount}: cũ hơn ngày bắt đầu, bỏ qua.`,
+            );
+            continue;
+          }
+        }
+
+        const preview =
+          postText
+            .slice(0, 60)
+            .replace(/\n/g, " ") ||
+          "(không có nội dung)";
+        sendLog(
+          `Bài viết ${scannedCount}: "${preview}…" bởi ${post.author_name || "không rõ"} — đang chuyển vào thùng rác...`,
+        );
+
+        // Use apiTrashPost instead of apiDeletePost
+        const trashResult =
+          await apiTrashPost(
+            post.id,
+            pageId,
+          );
+        if (!trashResult.success) {
+          sendLog(
+            `Không thể xóa bài viết ${scannedCount}: ${trashResult.message}`,
+            "error",
+          );
+          continue;
+        }
+
+        deletedCount++;
+        sendLog(
+          `✓ Bài viết ${scannedCount} đã được chuyển vào thùng rác! (${deletedCount}/${config.maxPosts})`,
+          "success",
+        );
+        await delay(
+          800 + Math.random() * 500,
+          signal,
+        );
+      }
+
+      // Move to next page if available
+      if (
+        !result.hasNextPage ||
+        !result.cursor
+      )
+        break;
+      cursor = result.cursor;
+    }
+
+    sendDone(
+      `Hoàn tất! Đã xóa ${deletedCount} bài viết Page, quét ${scannedCount} bài viết.`,
+    );
+  } catch (err) {
+    if (
+      err instanceof DOMException &&
+      err.name === "AbortError"
+    ) {
+      sendDone(
+        `Đã dừng. Đã xóa ${deletedCount} bài viết Page.`,
+      );
+    } else {
+      sendLog(`Lỗi: ${err}`, "error");
+      sendDone("Thất bại.");
+    }
+  }
+}
+
 // ─── Message Listener ───
 chrome.runtime.onMessage.addListener(
   (message, _sender, sendResponse) => {
@@ -2081,6 +2799,50 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (
+      message.type === "GET_PAGE_ID"
+    ) {
+      // Try to detect Page ID from profile URL or page source
+      const url = window.location.href;
+      let foundPageId: string | null =
+        null;
+
+      // Pattern: /profile.php?id=XXXXX
+      const profileMatch = url.match(
+        /profile\.php\?id=(\d+)/,
+      );
+      if (profileMatch?.[1]) {
+        foundPageId = profileMatch[1];
+      }
+
+      // If not found in URL, search page source
+      if (!foundPageId) {
+        const html =
+          document.documentElement
+            .innerHTML;
+        const patterns = [
+          /"pageID"\s*:\s*"(\d+)"/,
+          /"page_id"\s*:\s*"(\d+)"/,
+          /"profileID"\s*:\s*"(\d+)"/,
+          /"userID"\s*:\s*"(\d+)"/,
+          /"ownerID"\s*:\s*"(\d+)"/,
+        ];
+        for (const pattern of patterns) {
+          const match =
+            html.match(pattern);
+          if (match?.[1]) {
+            foundPageId = match[1];
+            break;
+          }
+        }
+      }
+
+      sendResponse({
+        pageId: foundPageId,
+      });
+      return;
+    }
+
+    if (
       message.type ===
       "START_POST_CLEANER"
     ) {
@@ -2113,6 +2875,17 @@ chrome.runtime.onMessage.addListener(
       runSpamCleaner(
         message.config as CleanerConfig,
         message.groupId as string,
+      );
+    }
+
+    if (
+      message.type ===
+      "START_PAGE_CLEANER"
+    ) {
+      sendResponse({ ok: true });
+      runPageCleaner(
+        message.config as CleanerConfig,
+        message.pageId as string,
       );
     }
 

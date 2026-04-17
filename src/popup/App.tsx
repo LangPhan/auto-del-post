@@ -4,9 +4,10 @@ import {
 } from "react";
 import "./App.css";
 import PostCleanerTool from "./components/PostCleanerTool";
+import PageManageTool from "./components/PageManageTool";
 import SettingsTool from "./components/SettingsTool";
 
-type Tab = "font-size" | "post-cleaner" | "settings";
+type Tab = "font-size" | "post-cleaner" | "page-manage" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] =
@@ -41,7 +42,15 @@ export default function App() {
             setActiveTab("post-cleaner")
           }
         >
-          🧹 Dọn dẹp bài viết
+          🧹 Dọn dẹp nhóm
+        </button>
+        <button
+          className={`tab ${activeTab === "page-manage" ? "tab-active" : ""}`}
+          onClick={() =>
+            setActiveTab("page-manage")
+          }
+        >
+          📄 Quản lý Page
         </button>
         <button
           className={`tab ${activeTab === "settings" ? "tab-active" : ""}`}
@@ -67,6 +76,15 @@ export default function App() {
       </Activity>
       <Activity
         mode={
+          activeTab === "page-manage"
+            ? "visible"
+            : "hidden"
+        }
+      >
+        <PageManageTool />
+      </Activity>
+      <Activity
+        mode={
           activeTab === "settings"
             ? "visible"
             : "hidden"
@@ -78,8 +96,11 @@ export default function App() {
       <footer className="popup-footer">
         {activeTab === "font-size"
           ? "Điều chỉnh kích cỡ chữ trên bảng tin Facebook của bạn"
-          : "Chọn chế độ, thiết lập bộ lọc, sau đó nhấn Bắt đầu dọn dẹp"}
+          : activeTab === "page-manage"
+            ? "Quản lý và dọn dẹp bài viết trên Facebook Page của bạn"
+            : "Chọn chế độ, thiết lập bộ lọc, sau đó nhấn Bắt đầu dọn dẹp"}
       </footer>
     </div>
   );
 }
+
