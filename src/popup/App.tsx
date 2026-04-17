@@ -3,11 +3,15 @@ import {
   useState,
 } from "react";
 import "./App.css";
-import PostCleanerTool from "./components/PostCleanerTool";
 import PageManageTool from "./components/PageManageTool";
+import PostCleanerTool from "./components/PostCleanerTool";
 import SettingsTool from "./components/SettingsTool";
 
-type Tab = "font-size" | "post-cleaner" | "page-manage" | "settings";
+type Tab =
+  | "font-size"
+  | "post-cleaner"
+  | "page-manage"
+  | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] =
@@ -42,7 +46,7 @@ export default function App() {
             setActiveTab("post-cleaner")
           }
         >
-          🧹 Dọn dẹp nhóm
+          🧹 Dọn dẹp Nhóm
         </button>
         <button
           className={`tab ${activeTab === "page-manage" ? "tab-active" : ""}`}
@@ -50,7 +54,7 @@ export default function App() {
             setActiveTab("page-manage")
           }
         >
-          📄 Quản lý Page
+          📄 Dọn dẹp Page
         </button>
         <button
           className={`tab ${activeTab === "settings" ? "tab-active" : ""}`}
@@ -103,4 +107,3 @@ export default function App() {
     </div>
   );
 }
-
