@@ -2053,8 +2053,7 @@ async function getPagePostsGraphQL(
   if (!fb_dtsg) {
     return {
       success: false,
-      message:
-        "Thiếu token (fb_dtsg)",
+      message: "Thiếu token (fb_dtsg)",
     };
   }
 
@@ -2332,8 +2331,7 @@ async function apiTrashPost(
   if (!fb_dtsg) {
     return {
       success: false,
-      message:
-        "Thiếu token (fb_dtsg)",
+      message: "Thiếu token (fb_dtsg)",
     };
   }
 
@@ -2375,7 +2373,8 @@ async function apiTrashPost(
           variables: JSON.stringify({
             input: {
               story_id: storyId,
-              story_location: "TIMELINE",
+              story_location:
+                "TIMELINE",
               actor_id: av,
               client_mutation_id:
                 Math.floor(
@@ -2616,8 +2615,7 @@ async function runPageCleaner(
         return;
       }
 
-      const posts =
-        result.posts ?? [];
+      const posts = result.posts ?? [];
       if (posts.length === 0) {
         sendLog(
           "Không tìm thấy thêm bài viết nào.",
@@ -2727,13 +2725,10 @@ async function runPageCleaner(
         );
       }
 
-      // Move to next page if available
-      if (
-        !result.hasNextPage ||
-        !result.cursor
-      )
-        break;
-      cursor = result.cursor;
+      // After deleting posts, timeline shifts — re-fetch from top
+      // since deleted posts are gone. Only use cursor if no posts were deleted in this batch.
+      // This prevents stale cursors from stopping the loop.
+      // (Same approach as group feed cleaner)
     }
 
     sendDone(
